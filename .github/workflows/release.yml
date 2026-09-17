@@ -38,7 +38,7 @@ jobs:
           name: android
           path: dist
 
-  # Windows：x64 安装包（Inno Setup 生成的 setup EXE）。
+  # Windows：x64 MSI 安装包（WiX v5）。
   windows:
     name: Windows x64
     runs-on: windows-latest
@@ -50,17 +50,19 @@ jobs:
           channel: stable
           cache: true
       - run: flutter build windows --release
-      - name: Build installer EXE (Inno Setup)
+      - name: Build MSI (WiX)
         shell: pwsh
         run: |
           $ver = (Select-String -Path pubspec.yaml -Pattern '^version:\s*(\d+\.\d+\.\d+)').Matches[0].Groups[1].Value
-          Write-Host "AppVersion=$ver"
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAPP_VERSION=$ver windows\packaging\setup.iss
+          Write-Host "Version=$ver"
+          dotnet tool install --global wix
+          $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
+          wix build -arch x64 -define Version=$ver -o fund-valuation-windows-x64.msi windows\packaging\msi.wxs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:
           name: windows
-          path: windows/packaging/dist/*.exe
+          path: fund-valuation-windows-x64.msi
 
   # Linux：x64 DEB 安装包（GTK3）。
   linux:

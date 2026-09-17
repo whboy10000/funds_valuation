@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- MSI installer for Fund Valuation (Windows x64).
+     APP Version is passed from CI via `wix build -define Version=x.y.z`. -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+      Name="Fund Valuation"
+      Manufacturer="whboy10000"
+      Version="$(var.Version)"
+      UpgradeCode="7E5C1F2A-9B34-4E0D-8A11-3F5C6D7E8B90"
+      Scope="perMachine"
+      Compressed="yes">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="FundValuation" />
+    </StandardDirectory>
+
+    <Feature Id="Main">
+      <!-- Relative to this .wxs file: repo-root build output of flutter build windows. -->
+      <Files Include="..\..\build\windows\x64\runner\Release\**\*" />
+    </Feature>
+  </Package>
+</Wix>
