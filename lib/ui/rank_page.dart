@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models.dart';
@@ -48,6 +50,7 @@ class _RankPageState extends State<RankPage> {
   List<FundRankItem> _items = [];
   FundRankStats? _stats;
   bool _loading = false;
+  bool _slow = false; // 加载超过 15s（弱网提示）。
   String? _error;
   String? _statsError;
 
@@ -62,6 +65,11 @@ class _RankPageState extends State<RankPage> {
 
   Future<void> _loadTab() async {
     if (_loading) return;
+    _slow = false;
+    // 弱网提示：15s 后仍未完成则显示慢速加载文案。
+    unawaited(Future<void>.delayed(const Duration(seconds: 15), () {
+      if (mounted && _loading) setState(() => _slow = true);
+    }));
     setState(() {
       _loading = true;
       _error = null;
@@ -74,19 +82,23 @@ class _RankPageState extends State<RankPage> {
           ..clear()
           ..addAll(all);
       } else {
-        // 场外 = 全市场剔除场内代码；场内列表尚未加载时先拉（做差集用）。
-        if (_intradayAll.isEmpty && !_loadedTabs.contains(0)) {
-          try {
-            final all = await MarketApi.etfList();
-            if (!mounted) return;
-            _intradayAll
-              ..clear()
-              ..addAll(all);
-            _loadedTabs.add(0);
-          } catch (_) {} // 场内拉取失败时降级：场外榜不剔除。
-        }
+        // 场外 = 头尾分页快速拉取；场内列表并行补拉（做差集用），
+        // 场内失败时降级：场外榜不剔除。
+        final otcF = FundApi.rankFast();
+        final etfF = _intradayAll.isEmpty && !_loadedTabs.contains(0)
+            ? MarketApi.etfList().then((v) {
+                if (!mounted) return;
+                _intradayAll
+                  ..clear()
+                  ..addAll(v);
+              }).catchError((_) {})
+            : Future<void>.value();
+        await etfF;
+        if (!mounted) return;
         final exclude = {for (final e in _intradayAll) e.code};
-        final all = await FundApi.rankOtc(excludeCodes: exclude);
+        final all = (await otcF)
+            .where((e) => !exclude.contains(e.code))
+            .toList();
         if (!mounted) return;
         _otcAll
           ..clear()
@@ -252,7 +264,19 @@ class _RankPageState extends State<RankPage> {
           ),
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator())
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const CircularProgressIndicator(),
+                        if (_slow) ...[
+                          const SizedBox(height: 12),
+                          Text('网络较慢，仍在加载…',
+                              style: Theme.of(context).textTheme.bodySmall),
+                        ],
+                      ],
+                    ),
+                  )
                 : _error != null
                     ? ListView(
                         physics: const AlwaysScrollableScrollPhysics(),

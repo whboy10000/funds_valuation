@@ -680,25 +680,35 @@ class FundApi {
   /// 全市场基金排行原始行缓存（rankhandler 全量约 2 万条，一次拉取多方复用）。
   static List<dynamic>? _rankRowsCache;
 
+  /// 全市场基金排行原始行（仅统计卡用）。
+  ///
+  /// 全量约 2 万条：单请求 4MB 移动端易超时，拆为 5 页 × 5000 依次拉取。
   static Future<List<dynamic>> rankRows() async {
     final cached = _rankRowsCache;
     if (cached != null) return cached;
     final now = DateTime.now();
-    final url = 'https://fund.eastmoney.com/data/rankhandler.aspx?op=ph&dt=kf'
-        '&ft=all&rs=&gs=0&sc=rzdf&st=desc'
-        '&sd=${_ymd(now.subtract(const Duration(days: 400)))}&ed=${_ymd(now)}'
-        '&qdii=&tabSubtype=,,,,,,,,&pi=1&pn=25000&dx=1';
-    List<dynamic> rows;
-    if (kIsWeb) {
-      rows = ((await loadScriptVar(url, ['rankData']))['rankData']
-          ?['datas'] as List?) ??
-          const [];
-    } else {
-      final text = await httpGet(
-        url,
-        referer: 'https://fund.eastmoney.com/data/fundranking.html',
-      );
-      rows = parseRankBody(text) ?? const [];
+    final rows = <dynamic>[];
+    for (var page = 1; page <= 5; page++) {
+      final url = 'https://fund.eastmoney.com/data/rankhandler.aspx?op=ph&dt=kf'
+          '&ft=all&rs=&gs=0&sc=rzdf&st=desc'
+          '&sd=${_ymd(now.subtract(const Duration(days: 400)))}&ed=${_ymd(now)}'
+          '&qdii=&tabSubtype=,,,,,,,,&pi=$page&pn=5000&dx=1';
+      List<dynamic> part;
+      if (kIsWeb) {
+        part = ((await loadScriptVar(url, ['rankData']))['rankData']
+                ?['datas'] as List?) ??
+            const [];
+      } else {
+        final text = await httpGet(
+          url,
+          referer: 'https://fund.eastmoney.com/data/fundranking.html',
+        );
+        part = parseRankBody(text) ?? const [];
+      }
+      rows.addAll(part);
+      if (part.length < 5000) break;
+      // 翻页节流。
+      await Future<void>.delayed(const Duration(milliseconds: 200));
     }
     _rankRowsCache = rows;
     return rows;
@@ -710,16 +720,29 @@ class FundApi {
     return parseRankStats(rows);
   }
 
-  /// 场外基金排行：全市场净值日增长率排行剔除场内代码（ETF/LOF）。
-  /// 返回按日涨幅降序的条目，涨跌榜与主题筛选由客户端完成。
-  static Future<List<FundRankItem>> rankOtc(
-      {required Set<String> excludeCodes}) async {
-    final rows = await rankRows();
-    final items = parseRankItems(rows);
-    if (excludeCodes.isEmpty) return items;
-    return [
-      for (final e in items) if (!excludeCodes.contains(e.code)) e
-    ];
+  /// 场外基金排行快速版（移动端友好）：
+  /// 涨幅榜 / 跌幅榜各拉头部分页（每页 50 只小响应），
+  /// 合并去重并剔除场内代码（[excludeCodes]）。
+  /// 避免全量 2.5 万条单请求（约 4MB）在弱网下超时导致一直加载。
+  static Future<List<FundRankItem>> rankFast(
+      {Set<String> excludeCodes = const {}, int perSide = 250}) async {
+    final pages = (perSide / 50).ceil();
+    // 涨幅榜/跌幅榜各分页并行拉取，整体耗时 ≈ 最慢单页。
+    final parts = await Future.wait([
+      for (var page = 1; page <= pages; page++)
+        for (final asc in const [false, true])
+          rank(asc: asc, page: page, pageSize: 50)
+              .catchError((_) => <FundRankItem>[]), // 单页失败跳过。
+    ]);
+    final seen = <String>{};
+    final out = <FundRankItem>[];
+    for (final items in parts) {
+      for (final it in items) {
+        if (excludeCodes.contains(it.code) || !seen.add(it.code)) continue;
+        out.add(it);
+      }
+    }
+    return out;
   }
 
   /// 聚合排行行：上涨/平盘/下跌家数、平均与中位数涨幅。

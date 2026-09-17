@@ -157,9 +157,11 @@ class MarketApi {
   }
 
   /// 场内基金（ETF/LOF）实时行情排行：以实时成交价涨跌幅排序，
-  /// 非昨日净值口径。全市场约 1600 只，分页拉取（单页上限 100）。
+  /// 非昨日净值口径。返回涨跌两端头部（约 600 只），
+  /// 多主机尝试并择优（取条数最多的一轮）。
   static Future<List<FundRankItem>> etfList() async {
     Object? lastErr;
+    List<FundRankItem>? best;
     for (final host in const [
       '29.push2.eastmoney.com',
       '17.push2.eastmoney.com',
@@ -168,27 +170,48 @@ class MarketApi {
     ]) {
       try {
         final list = await _etfOn(host);
-        if (list.isNotEmpty) return list;
+        if (list.length >= 300) return list; // 完整一轮，直接使用。
+        if (best == null || list.length > best.length) best = list;
       } catch (e) {
         lastErr = e;
       }
     }
+    if (best != null && best.isNotEmpty) return best;
     if (lastErr != null) throw Exception('场内基金获取失败: $lastErr');
     return const [];
   }
 
   static Future<List<FundRankItem>> _etfOn(String host) async {
+    // 头尾双向各 3 页（约 600 只）：涨幅榜头部 + 跌幅榜头部，
+    // 涨跌两端全覆盖；并行请求（串行翻页在移动端网络下过慢）。
+    final specs = [
+      for (final po in const [1, 0])
+        for (var page = 1; page <= 3; page++) (po, page),
+    ];
+    Future<List<dynamic>> fetch(int po, int page) async {
+      try {
+        final url = 'https://$host/api/qt/clist/get?pn=$page&pz=100&po=$po&np=1'
+            '&$_common&fid=f3&fs=b:MK0021,b:MK0022,b:MK0023,b:MK0024'
+            '&fields=f2,f3,f12,f14';
+        final data =
+            await httpGetJson(url, referer: 'https://quote.eastmoney.com/');
+        return (data?['data']?['diff'] as List?) ?? const [];
+      } catch (_) {
+        return const []; // 单页失败跳过，稍后补拉。
+      }
+    }
+
+    final results = <List<dynamic>>[];
+    results.addAll(await Future.wait(
+        [for (final s in specs) fetch(s.$1, s.$2)]));
+    // 并发易触发频控丢页：对空页串行补拉一轮。
+    for (var i = 0; i < specs.length; i++) {
+      if (results[i].isNotEmpty) continue;
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      results[i] = await fetch(specs[i].$1, specs[i].$2);
+    }
     final out = <FundRankItem>[];
-    var page = 1;
-    var total = 1 << 30;
-    while ((page - 1) * 100 < total && page <= 20) {
-      final url = 'https://$host/api/qt/clist/get?pn=$page&pz=100&po=1&np=1'
-          '&$_common&fid=f3&fs=b:MK0021,b:MK0022,b:MK0023,b:MK0024'
-          '&fields=f2,f3,f12,f14';
-      final data = await httpGetJson(url, referer: 'https://quote.eastmoney.com/');
-      total = (data?['data']?['total'] as num?)?.toInt() ?? 0;
-      final diff = (data?['data']?['diff'] as List?) ?? const [];
-      if (diff.isEmpty) break;
+    for (final diff in results) {
       for (final d in diff) {
         out.add(FundRankItem(
           code: '${d['f12']}',
@@ -198,9 +221,6 @@ class MarketApi {
           pct: _num(d['f3']),
         ));
       }
-      page++;
-      // 翻页节流，降低触发频控的概率。
-      await Future<void>.delayed(const Duration(milliseconds: 250));
     }
     out.sort((a, b) => b.pct.compareTo(a.pct));
     return out;
