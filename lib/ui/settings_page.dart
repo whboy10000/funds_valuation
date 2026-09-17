@@ -1,7 +1,12 @@
+import 'dart:convert';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../state.dart';
+import 'about_page.dart';
+import 'common.dart';
 
 /// 设置页。
 class SettingsPage extends StatelessWidget {
@@ -12,25 +17,26 @@ class SettingsPage extends StatelessWidget {
     final app = AppState.shared;
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('设置')),
       body: ListenableBuilder(
         listenable: app,
         builder: (context, _) => ListView(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
+          padding: const EdgeInsets.only(bottom: kFloatingNavPadding),
           children: [
-            _Group(
-              title: '刷新',
+            const LargeTitleBar(title: '设置'),
+            const _GroupCaption('刷新'),
+            GroupedCard(
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
               children: [
                 const ListTile(
-                  dense: true,
                   leading: Icon(Icons.timer_outlined),
                   title: Text('自动刷新间隔'),
                   subtitle: Text('前台运行时按间隔刷新估值与行情'),
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                  padding: const EdgeInsets.fromLTRB(16, 2, 16, 14),
                   child: Wrap(
                     spacing: 8,
+                    runSpacing: 8,
                     children: [
                       for (final v in const [0, 5, 10, 15, 30, 60])
                         ChoiceChip(
@@ -43,9 +49,9 @@ class SettingsPage extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            _Group(
-              title: '显示',
+            const _GroupCaption('显示'),
+            GroupedCard(
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
               children: [
                 SwitchListTile(
                   secondary: const Icon(Icons.palette_outlined),
@@ -54,42 +60,51 @@ class SettingsPage extends StatelessWidget {
                   value: app.redUp,
                   onChanged: app.setRedUp,
                 ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
-                  child: RadioGroup<int>(
-                    groupValue: app.themeMode,
-                    onChanged: (v) => app.setThemeMode(v ?? 0),
-                    child: Column(
-                      children: const [
-                        RadioListTile<int>(
-                          secondary: Icon(Icons.brightness_6_outlined),
-                          title: Text('跟随系统'),
-                          value: 0,
-                        ),
-                        RadioListTile<int>(
-                          secondary: Icon(Icons.light_mode_outlined),
-                          title: Text('浅色模式'),
-                          value: 1,
-                        ),
-                        RadioListTile<int>(
-                          secondary: Icon(Icons.dark_mode_outlined),
-                          title: Text('深色模式'),
-                          value: 2,
-                        ),
-                      ],
-                    ),
+                RadioGroup<int>(
+                  groupValue: app.themeMode,
+                  onChanged: (v) => app.setThemeMode(v ?? 0),
+                  child: const Column(
+                    children: [
+                      RadioListTile<int>(
+                        secondary: Icon(Icons.brightness_6_outlined),
+                        title: Text('跟随系统'),
+                        value: 0,
+                      ),
+                      RadioListTile<int>(
+                        secondary: Icon(Icons.light_mode_outlined),
+                        title: Text('浅色模式'),
+                        value: 1,
+                      ),
+                      RadioListTile<int>(
+                        secondary: Icon(Icons.dark_mode_outlined),
+                        title: Text('深色模式'),
+                        value: 2,
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            _Group(
-              title: '数据',
+            const _GroupCaption('数据'),
+            GroupedCard(
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
               children: [
                 ListTile(
-                  leading: const Icon(Icons.ios_share),
+                  leading: const Icon(Icons.file_upload_outlined),
                   title: const Text('导出自选列表'),
-                  subtitle: const Text('复制基金代码到剪贴板'),
+                  subtitle: const Text('保存为 JSON 备份文件（含持仓与交易记录）'),
+                  onTap: () => _exportFunds(context),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.file_download_outlined),
+                  title: const Text('导入自选列表'),
+                  subtitle: const Text('从 JSON 备份文件恢复，支持合并或覆盖'),
+                  onTap: () => _importFunds(context),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.content_copy),
+                  title: const Text('复制基金代码'),
+                  subtitle: const Text('将全部自选代码以逗号分隔复制到剪贴板'),
                   onTap: () async {
                     final codes = app.funds.map((f) => f.code).join(',');
                     await Clipboard.setData(ClipboardData(text: codes));
@@ -107,36 +122,148 @@ class SettingsPage extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            _Group(
-              title: '关于',
+            const _GroupCaption('关于'),
+            GroupedCard(
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
               children: [
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 8, 16, 12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('基金实时估值 v1.0.0',
-                          style: TextStyle(fontWeight: FontWeight.w700)),
-                      SizedBox(height: 6),
-                      Text(
-                        '数据来源：东方财富 / 天天基金公开接口。\n\n'
-                        '由于官方盘中估值功能已下线，本应用的实时估值为自研计算：'
-                        '基于基金前十大重仓股的持仓权重与其实时行情，'
-                        '结合最新披露的股票仓位加权推算，'
-                        '仅供盘中参考，不代表真实净值。\n\n'
-                        '估值准确性受持仓披露滞后影响，'
-                        '对指数型、高仓位基金误差较小，'
-                        '对调仓频繁或低仓位基金误差较大。',
-                        style: TextStyle(fontSize: 12.5, height: 1.5),
-                      ),
-                    ],
+                ListTile(
+                  leading: const Icon(Icons.info_outline),
+                  title: const Text('APP 介绍'),
+                  subtitle: const Text('平台适配、功能模块与估值计算原理'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const AboutPage()),
                   ),
+                ),
+                const ListTile(
+                  leading: Icon(Icons.tag),
+                  title: Text('版本'),
+                  subtitle: Text('基金实时估值 v2.1.1'),
                 ),
               ],
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 10, 22, 0),
+              child: Text(
+                '数据来源：东方财富 / 天天基金公开接口。'
+                '盘中估值为自研计算，仅供参考，不代表真实净值。',
+                style: TextStyle(
+                    fontSize: 12, height: 1.5, color: scheme.outline),
+              ),
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// 导出自选为 JSON 文件。
+  Future<void> _exportFunds(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final app = AppState.shared;
+    if (app.funds.isEmpty) {
+      messenger.showSnackBar(
+          const SnackBar(content: Text('自选列表为空，无需导出')));
+      return;
+    }
+    final n = DateTime.now();
+    final stamp = '${n.year}${n.month.toString().padLeft(2, '0')}'
+        '${n.day.toString().padLeft(2, '0')}-'
+        '${n.hour.toString().padLeft(2, '0')}'
+        '${n.minute.toString().padLeft(2, '0')}';
+    final jsonStr = app.exportFundsJson();
+    try {
+      // 桌面 / 移动端弹出保存位置选择；Web 端 bytes 直接触发浏览器下载。
+      final uri = await FilePicker.saveFile(
+        dialogTitle: '导出自选列表',
+        fileName: 'funds-backup-$stamp.json',
+        type: FileType.custom,
+        allowedExtensions: const ['json'],
+        bytes: Uint8List.fromList(utf8.encode(jsonStr)),
+      );
+      // 返回 null 表示用户取消保存，不提示。
+      if (uri != null) {
+        messenger
+            .showSnackBar(const SnackBar(content: Text('已导出 JSON 备份文件')));
+      }
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('导出失败：$e')));
+    }
+  }
+
+  /// 选择 JSON 文件并导入。
+  Future<void> _importFunds(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final PlatformFile? picked;
+    try {
+      picked = await FilePicker.pickFile(
+        dialogTitle: '选择自选备份文件',
+        type: FileType.custom,
+        allowedExtensions: const ['json'],
+      );
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('读取文件失败：$e')));
+      return;
+    }
+    if (picked == null) return; // 用户取消。
+    final Uint8List bytes;
+    try {
+      bytes = await picked.readAsBytes();
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('无法读取该文件：$e')));
+      return;
+    }
+    final String raw;
+    try {
+      raw = utf8.decode(bytes);
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text('文件编码不支持，请选择 UTF-8 编码的 JSON')));
+      return;
+    }
+
+    if (!context.mounted) return;
+    final replace = await _chooseImportMode(context);
+    if (replace == null) return; // 用户取消。
+
+    try {
+      final r = await AppState.shared.importFundsJson(raw, replace: replace);
+      final mode = r.replaced ? '覆盖导入' : '合并导入';
+      final msg = StringBuffer('$mode完成：共 ${r.total} 只');
+      if (!r.replaced) {
+        msg.write('，新增 ${r.added} 只，更新 ${r.updated} 只');
+      }
+      if (r.trades > 0) msg.write('，交易记录 ${r.trades} 条');
+      if (r.invalid > 0) msg.write('（跳过 ${r.invalid} 条无效数据）');
+      messenger.showSnackBar(SnackBar(content: Text(msg.toString())));
+    } on FormatException catch (e) {
+      messenger
+          .showSnackBar(SnackBar(content: Text('导入失败：${e.message}')));
+    }
+  }
+
+  /// 选择导入方式：true 覆盖 / false 合并 / null 取消。
+  Future<bool?> _chooseImportMode(BuildContext context) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('导入方式'),
+        content: const Text(
+            '合并导入：保留现有自选，相同代码以备份文件为准；\n'
+            '覆盖导入：清空现有自选与交易记录后完全恢复。'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('合并导入'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('覆盖导入'),
+          ),
+        ],
       ),
     );
   }
@@ -164,35 +291,23 @@ class SettingsPage extends StatelessWidget {
   }
 }
 
-class _Group extends StatelessWidget {
-  const _Group({required this.title, required this.children});
+class _GroupCaption extends StatelessWidget {
+  const _GroupCaption(this.title);
 
   final String title;
-  final List<Widget> children;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
-            child: Text(title,
-                style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: scheme.primary)),
-          ),
-          ...children,
-        ],
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 16, 7),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: Theme.of(context).colorScheme.outline,
+          letterSpacing: -0.1,
+        ),
       ),
     );
   }

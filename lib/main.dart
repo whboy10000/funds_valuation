@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'state.dart';
 import 'ui/funds_page.dart';
@@ -6,6 +7,7 @@ import 'ui/market_page.dart';
 import 'ui/rank_page.dart';
 import 'ui/sectors_page.dart';
 import 'ui/settings_page.dart';
+import 'ui/theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -57,15 +59,18 @@ class _FundsValuationAppState extends State<FundsValuationApp>
           title: '基金实时估值',
           debugShowCheckedModeBanner: false,
           themeMode: mode,
-          theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2A5CAA)),
-            useMaterial3: true,
-          ),
-          darkTheme: ThemeData(
-            colorScheme:
-                ColorScheme.fromSeed(seedColor: const Color(0xFF7BA5E8), brightness: Brightness.dark),
-            useMaterial3: true,
-          ),
+          theme: buildAppTheme(Brightness.light),
+          darkTheme: buildAppTheme(Brightness.dark),
+          builder: (context, child) {
+            final brightness = Theme.of(context).brightness;
+            return AnnotatedRegion<SystemUiOverlayStyle>(
+              value: overlayStyleFor(brightness),
+              child: ScrollConfiguration(
+                behavior: const IosScrollBehavior(),
+                child: child!,
+              ),
+            );
+          },
           home: const HomePage(),
         );
       },
@@ -104,6 +109,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     final wide = MediaQuery.of(context).size.width >= 900;
     final body = IndexedStack(index: _index, children: _pages);
+    final scheme = Theme.of(context).colorScheme;
     if (wide) {
       return Scaffold(
         body: Row(
@@ -113,17 +119,36 @@ class _HomePageState extends State<HomePage> {
               onDestinationSelected: (i) => setState(() => _index = i),
               labelType: NavigationRailLabelType.all,
               leading: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
+                padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Column(
                   children: [
                     const SizedBox(height: 6),
-                    Icon(
-                      Icons.savings_outlined,
-                      color: Theme.of(context).colorScheme.primary,
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [Color(0xFFE6221E), Color(0xFF8E0616)],
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFFE6221E)
+                                .withValues(alpha: 0.35),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(Icons.trending_up,
+                          color: Colors.white, size: 23),
                     ),
                   ],
                 ),
               ),
+              groupAlignment: -0.9,
               destinations: [
                 for (final (icon, label) in _dests)
                   NavigationRailDestination(
@@ -133,25 +158,56 @@ class _HomePageState extends State<HomePage> {
                   ),
               ],
             ),
-            const VerticalDivider(width: 1),
+            VerticalDivider(width: 0.5, color: scheme.outlineVariant),
             Expanded(child: body),
           ],
         ),
       );
     }
+    final dark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       body: body,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: [
-          for (final (icon, label) in _dests)
-            NavigationDestination(
-              icon: Icon(icon),
-              selectedIcon: Icon(icon, fill: 1),
-              label: label,
+      extendBody: true,
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: scheme.surface,
+              borderRadius: BorderRadius.circular(28),
+              border: dark
+                  ? Border.all(
+                      width: 0.5,
+                      color: scheme.outlineVariant.withValues(alpha: 0.6))
+                  : null,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black
+                      .withValues(alpha: dark ? 0.5 : 0.12),
+                  blurRadius: 24,
+                  offset: const Offset(0, 8),
+                ),
+              ],
             ),
-        ],
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(28),
+              child: NavigationBar(
+                backgroundColor: Colors.transparent,
+                selectedIndex: _index,
+                onDestinationSelected: (i) => setState(() => _index = i),
+                destinations: [
+                  for (final (icon, label) in _dests)
+                    NavigationDestination(
+                      icon: Icon(icon),
+                      selectedIcon: Icon(icon, fill: 1),
+                      label: label,
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

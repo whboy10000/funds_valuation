@@ -5,6 +5,7 @@ import '../services/market_api.dart';
 import '../state.dart';
 import 'common.dart';
 import 'globe_page.dart';
+import 'index_detail_page.dart';
 
 /// 大盘页：涨跌分布 + A股指数 + 全球指数。
 class MarketPage extends StatefulWidget {
@@ -33,19 +34,6 @@ class _MarketPageState extends State<MarketPage> {
   Widget build(BuildContext context) {
     final app = AppState.shared;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('大盘行情'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: '刷新',
-            onPressed: () {
-              app.refreshMarket();
-              _loadTrends(force: true);
-            },
-          ),
-        ],
-      ),
       body: ListenableBuilder(
         listenable: app,
         builder: (context, _) {
@@ -56,31 +44,56 @@ class _MarketPageState extends State<MarketPage> {
             },
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
+              padding: const EdgeInsets.only(bottom: kFloatingNavPadding),
               children: [
-                _GlobeSection(),
-                const SizedBox(height: 12),
-                _BreadthCard(breadth: app.breadth),
-                const SizedBox(height: 12),
-                _SectionTitle('A股指数'),
-                const SizedBox(height: 8),
-                _IndexGrid(
-                  secids: [for (final e in MarketApi.aIndices) e.$1],
-                  onTap: _openTrend,
+                LargeTitleBar(
+                  title: '大盘行情',
+                  actions: [
+                    IconButton(
+                      icon: const Icon(Icons.refresh),
+                      tooltip: '刷新',
+                      onPressed: () {
+                        app.refreshMarket();
+                        _loadTrends(force: true);
+                      },
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 12),
-                _SectionTitle('港股指数'),
-                const SizedBox(height: 8),
-                _IndexGrid(
-                  secids: [for (final e in MarketApi.hkIndices) e.$1],
-                  onTap: _openTrend,
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 2, 16, 4),
+                  child: _GlobeSection(),
                 ),
-                const SizedBox(height: 12),
-                _SectionTitle('全球指数'),
-                const SizedBox(height: 8),
-                _IndexGrid(
-                  secids: [for (final e in MarketApi.globalIndices) e.$1],
-                  onTap: _openTrend,
+                const SizedBox(height: 10),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _BreadthCard(breadth: app.breadth),
+                ),
+                const _SectionTitle('A股指数'),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _IndexGrid(
+                    secids: [for (final e in MarketApi.aIndices) e.$1],
+                    group: 'A股',
+                    onTap: _openDetail,
+                  ),
+                ),
+                const _SectionTitle('港股指数'),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _IndexGrid(
+                    secids: [for (final e in MarketApi.hkIndices) e.$1],
+                    group: '港股',
+                    onTap: _openDetail,
+                  ),
+                ),
+                const _SectionTitle('全球指数'),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: _IndexGrid(
+                    secids: [for (final e in MarketApi.globalIndices) e.$1],
+                    group: '全球',
+                    onTap: _openDetail,
+                  ),
                 ),
               ],
             ),
@@ -90,14 +103,18 @@ class _MarketPageState extends State<MarketPage> {
     );
   }
 
-  void _openTrend(String secid) {
+  void _openDetail(String secid, String group) {
     final app = AppState.shared;
     final q = app.indexQuotes[secid];
     if (q == null) return;
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => IndexTrendPage(secid: secid, name: q.name),
+        builder: (_) => IndexDetailPage(
+          secid: secid,
+          name: q.name,
+          group: group,
+        ),
       ),
     );
   }
@@ -109,8 +126,21 @@ class _SectionTitle extends StatelessWidget {
   final String title;
 
   @override
-  Widget build(BuildContext context) => Text(title,
-      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700));
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 14, 16, 7),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: scheme.outline,
+          letterSpacing: -0.1,
+        ),
+      ),
+    );
+  }
 }
 
 /// 涨跌分布卡。
@@ -140,7 +170,7 @@ class _BreadthCard extends StatelessWidget {
                   children: [
                     const Text('市场涨跌分布',
                         style: TextStyle(
-                            fontSize: 14, fontWeight: FontWeight.w700)),
+                            fontSize: 14, fontWeight: FontWeight.w600)),
                     const Spacer(),
                     Text(
                       app.marketUpdatedAt == null
@@ -206,7 +236,7 @@ class _Num extends StatelessWidget {
             Text('$value',
                 style: TextStyle(
                     fontSize: 17,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                     color: color,
                     fontFeatures: const [FontFeature.tabularFigures()])),
             Text(label,
@@ -220,10 +250,15 @@ class _Num extends StatelessWidget {
 
 /// 指数卡片网格。
 class _IndexGrid extends StatelessWidget {
-  const _IndexGrid({required this.secids, required this.onTap});
+  const _IndexGrid({
+    required this.secids,
+    required this.group,
+    required this.onTap,
+  });
 
   final List<String> secids;
-  final void Function(String) onTap;
+  final String group;
+  final void Function(String, String) onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -263,7 +298,7 @@ class _IndexGrid extends StatelessWidget {
             q: list[i],
             trend: app.indexTrends[list[i].secid] ?? const [],
             compact: compact,
-            onTap: () => onTap(list[i].secid),
+            onTap: () => onTap(list[i].secid, group),
           ),
         );
       },
@@ -289,48 +324,36 @@ class _IndexCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final flat = q.pct.isNaN || q.pct == 0;
     final color = upDownColor(q.pct, context);
-    // 文字颜色随涨跌幅度加深；整盒背景为方向色渐变淡底（幅度越大越浓）。
-    final textColor = upDownColorDeep(q.pct, context);
-    final bg = upDownTint(q.pct, context);
+    // App Store 风格：纯白卡片 + 彩色涨跌幅数字（不再整盒染色）。
     final decoration = BoxDecoration(
-      gradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          bg,
-          flat ? bg : Color.lerp(bg, color, 0.22)!,
-        ],
-      ),
-      borderRadius: BorderRadius.circular(12),
-      border: flat
-          ? Border.all(color: scheme.outlineVariant)
-          : Border.all(color: color.withValues(alpha: 0.45)),
+      color: scheme.surface,
+      borderRadius: BorderRadius.circular(14),
     );
 
     final nameText = Text(q.name,
         style: TextStyle(
             fontSize: compact ? 12.5 : 13,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
             color: scheme.onSurface),
         maxLines: 1,
         overflow: TextOverflow.ellipsis);
     final priceText = Text(fmtPrice(q.price),
         style: TextStyle(
-            fontSize: compact ? 17 : 20,
-            fontWeight: FontWeight.w800,
-            color: textColor,
+            fontSize: compact ? 17 : 19,
+            fontWeight: FontWeight.w600,
+            color: scheme.onSurface,
             height: 1.15,
+            letterSpacing: -0.3,
             fontFeatures: const [FontFeature.tabularFigures()]));
     final pctTextWidget = PctText(q.pct, fontSize: compact ? 13 : 14.5);
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(14),
       child: Container(
         padding: EdgeInsets.symmetric(
-            horizontal: compact ? 10 : 12, vertical: compact ? 8 : 12),
+            horizontal: compact ? 10 : 13, vertical: compact ? 9 : 12),
         decoration: decoration,
         child: compact
             ? Column(
@@ -370,99 +393,6 @@ class _IndexCard extends StatelessWidget {
   }
 }
 
-/// 指数分时详情。
-class IndexTrendPage extends StatefulWidget {
-  const IndexTrendPage({super.key, required this.secid, required this.name});
-
-  final String secid;
-  final String name;
-
-  @override
-  State<IndexTrendPage> createState() => _IndexTrendPageState();
-}
-
-class _IndexTrendPageState extends State<IndexTrendPage> {
-  List<TrendPoint> _points = [];
-  double _preClose = 0;
-  bool _loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    setState(() => _loading = true);
-    try {
-      final r = await MarketApi.trend(widget.secid);
-      if (!mounted) return;
-      setState(() {
-        _points = r.points;
-        _preClose = r.preClose;
-        _loading = false;
-      });
-    } catch (_) {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final pct = _preClose > 0 && _points.isNotEmpty
-        ? (_points.last.value - _preClose) / _preClose * 100
-        : double.nan;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.name, style: const TextStyle(fontSize: 17)),
-        actions: [
-          IconButton(
-              icon: const Icon(Icons.refresh), onPressed: _load),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(12),
-        children: [
-          InfoCard(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _points.isEmpty
-                      ? '--'
-                      : fmtPrice(_points.last.value),
-                  style: TextStyle(
-                      fontSize: 30,
-                      fontWeight: FontWeight.w800,
-                      color: upDownColor(pct, context),
-                      fontFeatures: const [FontFeature.tabularFigures()]),
-                ),
-                const SizedBox(height: 4),
-                PctText(pct, fontSize: 16),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          InfoCard(
-            child: _loading
-                ? SizedBox(
-                    height: 220,
-                    child: Center(
-                        child: CircularProgressIndicator(
-                            color: Theme.of(context).colorScheme.primary)))
-                : TrendChart(
-                    points: _points,
-                    base: _preClose,
-                    height: 240,
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// 3D 全球市场子模块：嵌入大盘页顶部，可缩放旋转、显示国家边界，
 /// 点击国家查看该国常用指数。
 class _GlobeSection extends StatelessWidget {
@@ -476,12 +406,12 @@ class _GlobeSection extends StatelessWidget {
       children: [
         Row(
           children: [
-            Icon(Icons.public, size: 15, color: scheme.primary),
-            const SizedBox(width: 5),
+            Icon(Icons.public, size: 17, color: scheme.primary),
+            const SizedBox(width: 6),
             const Text('3D 全球市场',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
             const Spacer(),
-            Text('单指旋转 · 双指缩放 · 点击国家',
+            Text('旋转 · 缩放 · 点击国家',
                 style: TextStyle(fontSize: 11, color: scheme.outline)),
           ],
         ),
@@ -489,7 +419,7 @@ class _GlobeSection extends StatelessWidget {
         SizedBox(
           height: 430,
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(16),
             child: const GlobeView(),
           ),
         ),

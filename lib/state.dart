@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
@@ -712,6 +713,137 @@ class AppState extends ChangeNotifier {
     estBuffers.clear();
     await _persistFunds();
     notifyListeners();
+  }
+
+  // ================= 自选备份导入 / 导出 =================
+
+  /// 导出自选备份为 JSON 字符串（含持仓配置与交易记录）。
+  String exportFundsJson() {
+    return const JsonEncoder.withIndent('  ').convert({
+      'app': 'funds-valuation',
+      'format': 1,
+      'exportedAt': DateTime.now().toIso8601String(),
+      'fundCount': funds.length,
+      'funds': funds.map((e) => e.toJson()).toList(),
+      'trades': trades.map((e) => e.toJson()).toList(),
+    });
+  }
+
+  /// 解析并导入自选备份 JSON。
+  /// - [replace]=true：覆盖现有全部自选与交易记录；
+  /// - [replace]=false：合并，已存在的代码以备份内容为准，新代码追加。
+  /// 兼容顶层直接为基金数组的简单格式。
+  Future<ImportResult> importFundsJson(String raw,
+      {required bool replace}) async {
+    final dynamic decoded;
+    try {
+      decoded = jsonDecode(raw);
+    } catch (_) {
+      throw const FormatException('文件不是有效的 JSON');
+    }
+
+    final List rawFunds;
+    final List rawTrades;
+    if (decoded is Map) {
+      final f = decoded['funds'];
+      if (f is! List) {
+        throw const FormatException('备份文件缺少 funds 列表');
+      }
+      rawFunds = f;
+      rawTrades = decoded['trades'] is List ? decoded['trades'] as List : [];
+    } else if (decoded is List) {
+      rawFunds = decoded;
+      rawTrades = const [];
+    } else {
+      throw const FormatException('备份文件格式不正确');
+    }
+
+    final incoming = <FundItem>[];
+    var invalid = 0;
+    for (final e in rawFunds) {
+      if (e is! Map) {
+        invalid++;
+        continue;
+      }
+      try {
+        final item = FundItem.fromJson(Map<String, dynamic>.from(e));
+        if (item.code.trim().isEmpty || item.name.trim().isEmpty) {
+          invalid++;
+          continue;
+        }
+        incoming.add(item);
+      } catch (_) {
+        invalid++;
+      }
+    }
+    if (incoming.isEmpty) {
+      throw const FormatException('文件中没有可导入的有效基金');
+    }
+
+    var added = 0;
+    var updated = 0;
+    if (replace) {
+      funds.clear();
+      fundQuotes.clear();
+      estBuffers.clear();
+      trades.clear();
+      funds.addAll(incoming);
+      added = incoming.length;
+    } else {
+      final byCode = {for (final f in funds) f.code: f};
+      for (final item in incoming) {
+        final old = byCode[item.code];
+        if (old == null) {
+          funds.add(item);
+          byCode[item.code] = item;
+          added++;
+        } else {
+          final i = funds.indexOf(old);
+          funds[i] = item;
+          fundQuotes.remove(item.code);
+          updated++;
+        }
+      }
+    }
+
+    // 交易记录：覆盖模式直接替换；合并模式按 (代码,时间,方向,金额) 去重，
+    // 仅保留属于当前自选基金的记录。
+    final incomingTrades = <TradeRecord>[];
+    for (final e in rawTrades) {
+      if (e is! Map) continue;
+      try {
+        incomingTrades
+            .add(TradeRecord.fromJson(Map<String, dynamic>.from(e)));
+      } catch (_) {}
+    }
+    final codes = funds.map((f) => f.code).toSet();
+    if (replace) {
+      trades
+        ..clear()
+        ..addAll(incomingTrades.where((t) => codes.contains(t.code)));
+    } else {
+      final exist = trades
+          .map((t) => '${t.code}|${t.time}|${t.buy}|${t.amount}')
+          .toSet();
+      for (final t in incomingTrades) {
+        if (!codes.contains(t.code)) continue;
+        final key = '${t.code}|${t.time}|${t.buy}|${t.amount}';
+        if (exist.add(key)) trades.add(t);
+      }
+    }
+
+    await _persistFunds();
+    await Store.saveTrades(trades);
+    unawaited(refreshFunds());
+    notifyListeners();
+    return ImportResult(
+      total: incoming.length,
+      added: added,
+      updated: updated,
+      trades: incomingTrades.length,
+      invalid: invalid,
+      replaced: replace,
+    );
   }
 
   void _restartTimer() {

@@ -175,6 +175,13 @@ jobs:
           channel: stable
           cache: true
       - run: flutter build web --release
+      - name: Pack web static files
+        run: |
+          tar -C build/web -czf fund-valuation-web.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: fund-valuation-web.tar.gz
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -210,8 +217,8 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-          # 只下载五个平台产物，排除 buildx 等附加 artifact。
-          pattern: android|windows|linux|macos|ios
+          # 下载六个平台产物，排除 buildx 等附加 artifact。
+          pattern: android|windows|linux|macos|ios|web
       - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true

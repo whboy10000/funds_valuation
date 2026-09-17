@@ -908,3 +908,143 @@ class FundApi {
     return null;
   }
 }
+
+/// 重仓股归属市场 / 行业分布聚合（详情页「市场占比」「行业分布」饼图）。
+///
+/// 权重口径均为占净值比例（%），仅基于最新季报前十大重仓股；
+/// 不足 100% 的部分为未披露个股与债券/现金等非股票资产，
+/// 展示时由 [withRemainder] 追加「其他未披露」灰色扇区。
+class HoldingDist {
+  /// 板块标准顺序（决定饼图扇区与图例顺序）。
+  static const boardOrder = [
+    '上交所主板',
+    '上交所科创板',
+    '深交所主板',
+    '深交所创业板',
+    '北交所主板',
+    '港股',
+    '其他市场',
+  ];
+
+  /// 交易所标准顺序。
+  static const exchangeOrder = [
+    '上交所',
+    '深交所',
+    '北交所',
+    '港交所',
+    '其他市场',
+  ];
+
+  static const _boardExchange = {
+    '上交所主板': '上交所',
+    '上交所科创板': '上交所',
+    '深交所主板': '深交所',
+    '深交所创业板': '深交所',
+    '北交所主板': '北交所',
+    '港股': '港交所',
+    '其他市场': '其他市场',
+  };
+
+  /// 按股票代码 + 东财市场号判定所属板块。
+  ///
+  /// - 60x（不含 688/689）→ 上交所主板；688/689 → 上交所科创板；
+  /// - 000/001/002/003 → 深交所主板；300/301 → 深交所创业板；
+  /// - 43/83/87/88/920 等 4/8 开头六位代码 → 北交所主板；
+  /// - 5 位数字代码或市场号 116 → 港股；
+  /// - 市场号 0/1 兜底归入深/沪主板，其余（美股 QDII 等）→ 其他市场。
+  static String boardOf(String code, String market) {
+    final c = code.trim();
+    if (market == '116' ||
+        (c.length == 5 && RegExp(r'^\d{5}$').hasMatch(c))) {
+      return '港股';
+    }
+    if (RegExp(r'^\d{6}$').hasMatch(c)) {
+      if (c.startsWith('688') || c.startsWith('689')) return '上交所科创板';
+      if (c.startsWith('60')) return '上交所主板';
+      if (c.startsWith('300') || c.startsWith('301')) return '深交所创业板';
+      if (c.startsWith('000') ||
+          c.startsWith('001') ||
+          c.startsWith('002') ||
+          c.startsWith('003')) {
+        return '深交所主板';
+      }
+      if (c.startsWith('43') ||
+          c.startsWith('83') ||
+          c.startsWith('87') ||
+          c.startsWith('88') ||
+          c.startsWith('920') ||
+          c.startsWith('4') ||
+          c.startsWith('8')) {
+        return '北交所主板';
+      }
+    }
+    if (market == '1') return '上交所主板';
+    if (market == '0') return '深交所主板';
+    return '其他市场';
+  }
+
+  /// 板块 → 交易所。
+  static String exchangeOf(String code, String market) =>
+      _boardExchange[boardOf(code, market)] ?? '其他市场';
+
+  /// 按板块聚合，顺序遵循 [boardOrder]。
+  static List<(String, double)> byBoard(Iterable<FundHolding> holdings) =>
+      _aggregate(holdings, (h) => boardOf(h.code, h.market), boardOrder);
+
+  /// 按交易所聚合，顺序遵循 [exchangeOrder]。
+  static List<(String, double)> byExchange(Iterable<FundHolding> holdings) =>
+      _aggregate(
+          holdings, (h) => exchangeOf(h.code, h.market), exchangeOrder);
+
+  /// 按重仓股所属行业（申万一级）聚合降序；[top] 名之外并入「其他行业」。
+  static List<(String, double)> byIndustry(
+    Iterable<FundHolding> holdings, {
+    int top = 8,
+  }) {
+    final m = <String, double>{};
+    for (final h in holdings) {
+      final k = h.industry.trim().isEmpty ? '其他行业' : h.industry.trim();
+      m[k] = (m[k] ?? 0) + h.weight;
+    }
+    final entries = m.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final out = <(String, double)>[];
+    var rest = 0.0;
+    for (var i = 0; i < entries.length; i++) {
+      if (i < top) {
+        out.add((entries[i].key, entries[i].value));
+      } else {
+        rest += entries[i].value;
+      }
+    }
+    if (rest > 0) out.add(('其他行业', rest));
+    return out;
+  }
+
+  /// 追加「其他未披露」扇区：100 − 重仓合计（债券/现金/未披露个股等）。
+  static List<(String, double)> withRemainder(
+    List<(String, double)> slices, {
+    String label = '其他未披露',
+  }) {
+    final sum = slices.fold<double>(0, (a, b) => a + b.$2);
+    final rest = 100 - sum;
+    if (rest > 0.05) return [...slices, (label, rest)];
+    return slices;
+  }
+
+  static List<(String, double)> _aggregate(
+    Iterable<FundHolding> holdings,
+    String Function(FundHolding) keyOf,
+    List<String> order,
+  ) {
+    final m = <String, double>{};
+    for (final h in holdings) {
+      final k = keyOf(h);
+      m[k] = (m[k] ?? 0) + h.weight;
+    }
+    return [
+      for (final k in order)
+        if ((m[k] ?? 0) > 0) (k, m[k]!),
+    ];
+  }
+}

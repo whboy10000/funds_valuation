@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../state.dart';
 
+/// 悬浮圆角底部导航栏为页面内容预留的底部滚动留白。
+const double kFloatingNavPadding = 100;
+
 /// ---------- 颜色与格式化 ----------
 
 /// 按涨跌返回颜色（遵循用户设置的红涨绿跌）。
@@ -94,7 +97,7 @@ class PctText extends StatelessWidget {
       pctText(pct, withSign: withSign),
       style: TextStyle(
         fontSize: fontSize,
-        fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+        fontWeight: bold ? FontWeight.w600 : FontWeight.w500,
         color: upDownColor(pct, context),
         fontFeatures: const [FontFeature.tabularFigures()],
       ),
@@ -677,16 +680,18 @@ class EmptyView extends StatelessWidget {
   }
 }
 
-/// 小圆角信息卡片。
+/// iOS 分组卡片：纯白（深色 #1C1C1E）、连续圆角、无描边。
 class InfoCard extends StatelessWidget {
   const InfoCard({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(14),
+    this.padding = const EdgeInsets.all(16),
+    this.radius = 14,
   });
 
   final Widget child;
   final EdgeInsetsGeometry padding;
+  final double radius;
 
   @override
   Widget build(BuildContext context) {
@@ -696,9 +701,127 @@ class InfoCard extends StatelessWidget {
       padding: padding,
       decoration: BoxDecoration(
         color: scheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(radius),
       ),
       child: child,
+    );
+  }
+}
+
+/// App Store 式大标题（34pt 粗体），自带顶部安全区。
+class LargeTitleBar extends StatelessWidget {
+  const LargeTitleBar({
+    super.key,
+    required this.title,
+    this.actions,
+    this.subtitle,
+  });
+
+  final String title;
+  final List<Widget>? actions;
+  final String? subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 6, 8, 6),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 30,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.8,
+                      height: 1.15,
+                    ),
+                  ),
+                  if (subtitle != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(subtitle!,
+                          style: TextStyle(
+                              fontSize: 13, color: scheme.outline)),
+                    ),
+                ],
+              ),
+            ),
+            ...?actions,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// iOS 分组列表的分区小标题（13pt 灰色，位于卡片外侧上方）。
+class SectionHeader extends StatelessWidget {
+  const SectionHeader(this.title, {super.key, this.padding});
+
+  final String title;
+  final EdgeInsetsGeometry? padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: padding ?? const EdgeInsets.fromLTRB(22, 14, 20, 6),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: scheme.outline,
+          letterSpacing: -0.1,
+        ),
+      ),
+    );
+  }
+}
+
+/// iOS InsetGrouped 分组容器：白色圆角卡片 + 行间细分隔线。
+class GroupedCard extends StatelessWidget {
+  const GroupedCard({
+    super.key,
+    required this.children,
+    this.margin = const EdgeInsets.fromLTRB(16, 0, 16, 4),
+  });
+
+  final List<Widget> children;
+  final EdgeInsetsGeometry margin;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final separated = <Widget>[];
+    for (var i = 0; i < children.length; i++) {
+      separated.add(children[i]);
+      if (i < children.length - 1) {
+        separated.add(Divider(
+          height: 0.5,
+          thickness: 0.5,
+          indent: 16,
+          endIndent: 16,
+          color: scheme.outlineVariant.withValues(alpha: 0.7),
+        ));
+      }
+    }
+    return Container(
+      margin: margin,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(children: separated),
     );
   }
 }

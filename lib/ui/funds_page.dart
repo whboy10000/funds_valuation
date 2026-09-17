@@ -20,17 +20,18 @@ void showTradeSheet(BuildContext context, FundItem f, bool buy) {
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
+    showDragHandle: true,
     builder: (ctx) => Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               '${buy ? '加仓' : '减仓'} · ${f.name}',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
             ),
             if (!buy && f.amount > 0)
               Padding(
@@ -108,7 +109,7 @@ void showTradeRecords(BuildContext context, FundItem f) {
             children: [
               Text('交易记录 · ${f.name}',
                   style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.w700)),
+                      fontSize: 16, fontWeight: FontWeight.w600)),
               const SizedBox(height: 8),
               if (records.isEmpty)
                 Padding(
@@ -178,8 +179,16 @@ class _FundsPageState extends State<FundsPage> {
   Widget build(BuildContext context) {
     final app = AppState.shared;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('基金估值'),
+      body: ListenableBuilder(
+        listenable: app,
+        builder: (context, _) => _buildList(context, app),
+      ),
+    );
+  }
+
+  /// App Store 式大标题栏：排序 / 刷新 / 搜索添加。
+  Widget _titleBar(BuildContext context, AppState app) => LargeTitleBar(
+        title: '基金估值',
         actions: [
           const _SortMenuButton(),
           IconButton(
@@ -188,29 +197,34 @@ class _FundsPageState extends State<FundsPage> {
             onPressed: () => app.refreshFunds(),
           ),
           Padding(
-            padding: const EdgeInsets.only(right: 8),
+            padding: const EdgeInsets.only(left: 2, right: 4),
             child: FilledButton.tonalIcon(
               onPressed: () => _openSearch(context),
-              icon: const Icon(Icons.search, size: 18),
-              label: const Text('搜索添加'),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('添加基金'),
               style: FilledButton.styleFrom(
-                visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+                minimumSize: const Size(0, 34),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                textStyle: const TextStyle(
+                    fontSize: 13.5, fontWeight: FontWeight.w600),
               ),
             ),
           ),
         ],
-      ),
-      body: ListenableBuilder(
-        listenable: app,
-        builder: (context, _) => _buildList(context, app),
-      ),
-    );
-  }
+      );
 
   Widget _buildList(BuildContext context, AppState app) {
     final all = app.sortedFunds;
-    if (all.isEmpty) return const _EmptyFunds();
+    if (all.isEmpty) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(bottom: kFloatingNavPadding),
+        children: [
+          _titleBar(context, app),
+          const _EmptyFunds(),
+        ],
+      );
+    }
 
     // 分组标签：全部 + 已用分组（存在未分组基金时追加「未分组」）。
     final hasUngrouped = all.any((f) => f.group.isEmpty);
@@ -235,23 +249,29 @@ class _FundsPageState extends State<FundsPage> {
       ),
       _AllocationCard(funds: list, groupName: selected),
     ];
-    // 选中具体分组时显示组内今日收益小计。
+    // 选中具体分组时显示组内今日收益小计（iOS 分区标题样式）。
     if (selected.isNotEmpty) {
       children.add(_GroupHeader(name: selected, funds: list));
     }
-    children.addAll([
-      for (final f in list)
-        _FundTile(
-          f: f,
-          ratio: totalAmount > 0 && f.amount > 0 ? f.amount / totalAmount : 0,
-        ),
-    ]);
+    children.add(
+      GroupedCard(
+        margin: const EdgeInsets.fromLTRB(16, 2, 16, 18),
+        children: [
+          for (final f in list)
+            _FundTile(
+              f: f,
+              ratio: totalAmount > 0 && f.amount > 0 ? f.amount / totalAmount : 0,
+            ),
+        ],
+      ),
+    );
 
     return RefreshIndicator(
       onRefresh: () => app.refreshFunds(),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        children: children,
+        padding: const EdgeInsets.only(bottom: kFloatingNavPadding - 18),
+        children: [_titleBar(context, app), ...children],
       ),
     );
   }
@@ -261,6 +281,7 @@ class _FundsPageState extends State<FundsPage> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
+      showDragHandle: true,
       builder: (_) => const _AddFundSheet(),
     );
   }
@@ -306,13 +327,12 @@ class _AllocationCard extends StatelessWidget {
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+      padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
       child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
         decoration: BoxDecoration(
           color: scheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: scheme.outlineVariant),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -320,7 +340,7 @@ class _AllocationCard extends StatelessWidget {
             Text(
               groupName.isEmpty ? '资产占比' : '资产占比 · $groupName',
               style:
-                  const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                  const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 10),
             Row(
@@ -350,7 +370,7 @@ class _AllocationCard extends StatelessWidget {
                           Text(fmtMoney(total),
                               style: TextStyle(
                                   fontSize: 15,
-                                  fontWeight: FontWeight.w800,
+                                  fontWeight: FontWeight.w600,
                                   fontFeatures: const [
                                     FontFeature.tabularFigures()
                                   ])),
@@ -386,7 +406,7 @@ class _AllocationCard extends StatelessWidget {
                                 '${(v / total * 100).toStringAsFixed(1)}%',
                                 style: TextStyle(
                                     fontSize: 11.5,
-                                    fontWeight: FontWeight.w700,
+                                    fontWeight: FontWeight.w600,
                                     color: scheme.onSurfaceVariant,
                                     fontFeatures: const [
                                       FontFeature.tabularFigures()
@@ -465,12 +485,11 @@ class _GroupTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return SizedBox(
       height: 44,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.fromLTRB(16, 7, 16, 7),
         children: [
           for (final g in tabs)
             Padding(
@@ -479,11 +498,9 @@ class _GroupTabs extends StatelessWidget {
                 label: Text(
                   g.isEmpty ? '全部' : g,
                   style: TextStyle(
-                    fontSize: 12.5,
+                    fontSize: 13,
                     fontWeight:
-                        selected == g ? FontWeight.w700 : FontWeight.w500,
-                    color: selected == g ? scheme.primary : null,
-                  ),
+                        selected == g ? FontWeight.w600 : FontWeight.w500),
                 ),
                 selected: selected == g,
                 visualDensity: VisualDensity.compact,
@@ -559,13 +576,14 @@ class _GroupHeader extends StatelessWidget {
     }
     final scheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
+      padding: const EdgeInsets.fromLTRB(22, 10, 20, 5),
       child: Row(
         children: [
-          Icon(Icons.folder_outlined, size: 15, color: scheme.primary),
-          const SizedBox(width: 4),
           Text(name,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: scheme.outline)),
           Text('  ${funds.length}只',
               style: TextStyle(fontSize: 11.5, color: scheme.outline)),
           const Spacer(),
@@ -599,39 +617,38 @@ class _EmptyFunds extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const EmptyView(
-              icon: Icons.savings_outlined,
-              title: '还没有自选基金',
-              subtitle: '搜索基金代码或名称添加，\n实时估值将基于重仓股行情自动计算。',
+    return Padding(
+      padding: const EdgeInsets.only(top: 60),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const EmptyView(
+            icon: Icons.savings_outlined,
+            title: '还没有自选基金',
+            subtitle: '搜索基金代码或名称添加，\n实时估值将基于重仓股行情自动计算。',
+          ),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 28),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: [
+                for (final (code, name) in _hot)
+                  ActionChip(
+                    label: Text(name, style: const TextStyle(fontSize: 12)),
+                    onPressed: () async {
+                      final hit = await _ensureHit(code, name);
+                      if (hit != null && context.mounted) {
+                        _openPositionSetup(context, hit);
+                      }
+                    },
+                  ),
+              ],
             ),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                alignment: WrapAlignment.center,
-                children: [
-                  for (final (code, name) in _hot)
-                    ActionChip(
-                      label: Text(name, style: const TextStyle(fontSize: 12)),
-                      onPressed: () async {
-                        final hit = await _ensureHit(code, name);
-                        if (hit != null && context.mounted) {
-                          _openPositionSetup(context, hit);
-                        }
-                      },
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -660,6 +677,7 @@ void _openPositionSetup(BuildContext context, FundSearchHit hit) {
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
+    showDragHandle: true,
     builder: (ctx) => Padding(
       padding:
           EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
@@ -679,31 +697,17 @@ class _SummaryHeader extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final updated = app.fundsUpdatedAt;
     final showPnl = s.hasToday;
-    final color = showPnl ? upDownColor(s.todayPnl, context) : scheme.outline;
     final deep = showPnl ? upDownColorDeep(s.todayPnl, context) : scheme.outline;
-    final bg = showPnl
-        ? upDownTint(s.todayPnl, context)
-        : scheme.surfaceContainerLow;
     // 今日收益占比（相对昨日资产）。
     final base = s.marketValue - s.todayPnl;
     final todayPct = (showPnl && base > 0) ? s.todayPnl / base * 100 : double.nan;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
       child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              bg,
-              showPnl ? Color.lerp(bg, color, 0.25)! : bg,
-            ],
-          ),
+          color: scheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(16),
-          border: showPnl
-              ? Border.all(color: color.withValues(alpha: 0.35))
-              : Border.all(color: scheme.outlineVariant),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -717,17 +721,18 @@ class _SummaryHeader extends StatelessWidget {
                     children: [
                       Text('账户资产',
                           style: TextStyle(
-                              fontSize: 12.5,
+                              fontSize: 13,
                               fontWeight: FontWeight.w600,
-                              color: scheme.onSurfaceVariant)),
-                      const SizedBox(height: 2),
+                              color: scheme.outline)),
+                      const SizedBox(height: 3),
                       Text(
                         s.any ? fmtMoney(s.marketValue) : '--',
                         style: TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w800,
+                            fontSize: 29,
+                            fontWeight: FontWeight.w600,
                             color: scheme.onSurface,
                             height: 1.2,
+                            letterSpacing: -0.6,
                             fontFeatures: const [
                               FontFeature.tabularFigures()
                             ]),
@@ -740,19 +745,20 @@ class _SummaryHeader extends StatelessWidget {
                   children: [
                     Text('当日收益',
                         style: TextStyle(
-                            fontSize: 12.5,
+                            fontSize: 13,
                             fontWeight: FontWeight.w600,
-                            color: scheme.onSurfaceVariant)),
-                    const SizedBox(height: 2),
+                            color: scheme.outline)),
+                    const SizedBox(height: 3),
                     Text(
                       showPnl
                           ? '${s.todayPnl >= 0 ? '+' : ''}${fmtMoney(s.todayPnl)}'
                           : '--',
                       style: TextStyle(
-                          fontSize: 21,
-                          fontWeight: FontWeight.w800,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w600,
                           color: deep,
                           height: 1.25,
+                          letterSpacing: -0.3,
                           fontFeatures: const [FontFeature.tabularFigures()]),
                     ),
                     Text(
@@ -767,7 +773,7 @@ class _SummaryHeader extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Text(
               '更新于 ${updated == null ? '--:--:--' : _hhmmss(updated)}'
               '${app.refreshSecs > 0 ? ' · 每${app.refreshSecs}s自动刷新' : ''}',
@@ -819,7 +825,7 @@ class _FundTile extends StatelessWidget {
       ),
       onLongPress: () => _showActions(context),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
             Expanded(
@@ -916,18 +922,18 @@ class _FundTile extends StatelessWidget {
                 ),
                 if (hasHoldings && est)
                   Container(
-                    margin: const EdgeInsets.only(top: 4),
+                    margin: const EdgeInsets.only(top: 5),
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 3),
+                        horizontal: 9, vertical: 3.5),
                     decoration: BoxDecoration(
                       color: upDownTint(todayPnl, context),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
                       '${todayPnl >= 0 ? '+' : ''}${fmtMoney(todayPnl)}',
                       style: TextStyle(
                           fontSize: 12.5,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w600,
                           color: upDownColorDeep(todayPnl, context),
                           fontFeatures: const [
                             FontFeature.tabularFigures()
@@ -945,9 +951,9 @@ class _FundTile extends StatelessWidget {
   Widget _chip(BuildContext context, String text, Color bg,
           {Color? color}) =>
       Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
         decoration: BoxDecoration(
-            color: bg, borderRadius: BorderRadius.circular(4)),
+            color: bg, borderRadius: BorderRadius.circular(6)),
         child: Text(text,
             style: TextStyle(
                 fontSize: 10.5,
@@ -963,7 +969,7 @@ class _FundTile extends StatelessWidget {
           Text(value,
               style: TextStyle(
                   fontSize: 13,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                   color: color,
                   fontFeatures: const [FontFeature.tabularFigures()])),
           Text(label,
@@ -976,8 +982,11 @@ class _FundTile extends StatelessWidget {
     final app = AppState.shared;
     showModalBottomSheet<void>(
       context: context,
+      showDragHandle: true,
       builder: (ctx) => SafeArea(
-        child: Column(
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
@@ -1037,6 +1046,7 @@ class _FundTile extends StatelessWidget {
               },
             ),
           ],
+          ),
         ),
       ),
     );
@@ -1269,27 +1279,37 @@ class _AddFundSheetState extends State<_AddFundSheet> {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _ctrl,
-                      autofocus: true,
-                      decoration: InputDecoration(
-                        hintText: '基金代码 / 名称 / 拼音',
-                        prefixIcon: const Icon(Icons.search),
-                        isDense: true,
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  TextButton(
+              child: TextField(
+                controller: _ctrl,
+                autofocus: true,
+                textInputAction: TextInputAction.search,
+                decoration: InputDecoration(
+                  hintText: '基金代码 / 名称 / 拼音',
+                  prefixIcon: const Icon(Icons.search, size: 21),
+                  suffixIcon: IconButton(
+                    tooltip: '取消',
+                    icon: const Icon(Icons.keyboard_arrow_down_rounded,
+                        size: 26),
                     onPressed: () => Navigator.pop(context),
-                    child: const Text('取消'),
                   ),
-                ],
+                  filled: true,
+                  fillColor:
+                      Theme.of(context).colorScheme.surfaceContainerHigh,
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 15),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
               ),
             ),
             if (_loading)
@@ -1395,14 +1415,14 @@ class _PositionSetupSheetState extends State<_PositionSetupSheet> {
     ];
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+        padding: const EdgeInsets.fromLTRB(20, 2, 20, 14),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               '${widget.hit.name}（${widget.hit.code}）',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 2),
             Text('录入持有金额与买入成本，可随时在长按菜单中修改',
@@ -1420,7 +1440,6 @@ class _PositionSetupSheetState extends State<_PositionSetupSheet> {
                       labelText: '持有金额（元）',
                       hintText: '如 5000',
                       isDense: true,
-                      border: OutlineInputBorder(),
                     ),
                   ),
                 ),
@@ -1434,7 +1453,6 @@ class _PositionSetupSheetState extends State<_PositionSetupSheet> {
                       labelText: '买入成本（元）',
                       hintText: '选填，如 4800',
                       isDense: true,
-                      border: OutlineInputBorder(),
                     ),
                   ),
                 ),
@@ -1465,7 +1483,6 @@ class _PositionSetupSheetState extends State<_PositionSetupSheet> {
                 labelText: '自定义分组',
                 hintText: '如 支付宝 / 天天基金 / 新分组',
                 isDense: true,
-                border: OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 14),

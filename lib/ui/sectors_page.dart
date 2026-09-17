@@ -66,38 +66,52 @@ class _SectorsPageState extends State<SectorsPage>
       list = [...list]..sort((a, b) => a.pct.compareTo(b.pct));
     }
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('板块行情'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: '刷新',
-            onPressed: _refresh,
-          ),
-        ],
-        bottom: TabBar(
-          controller: _tab,
-          tabs: const [Tab(text: '行业板块'), Tab(text: '概念板块')],
-        ),
-      ),
       body: Column(
         children: [
+          LargeTitleBar(
+            title: '板块行情',
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                tooltip: '刷新',
+                onPressed: _refresh,
+              ),
+            ],
+          ),
+          TabBar(
+            controller: _tab,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            tabs: const [Tab(text: '行业板块'), Tab(text: '概念板块')],
+          ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
             child: TextField(
               controller: _search,
               decoration: InputDecoration(
                 hintText: '筛选板块名称',
-                prefixIcon: const Icon(Icons.filter_alt_outlined, size: 20),
-                isDense: true,
+                prefixIcon: const Icon(Icons.search, size: 21),
+                filled: true,
+                fillColor: scheme.surfaceContainerHigh,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
                 border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10)),
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
               ),
             ),
           ),
           // 排序控制行：涨幅正序 / 倒序切换（行业与概念均生效）。
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
+            padding: const EdgeInsets.fromLTRB(20, 2, 12, 2),
             child: Row(
               children: [
                 Text('共 ${list.length} 个',
@@ -130,6 +144,8 @@ class _SectorsPageState extends State<SectorsPage>
                     )
                   : ListView.builder(
                       physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.only(
+                          top: 4, bottom: kFloatingNavPadding),
                       itemCount: list.length,
                       itemBuilder: (context, i) => _SectorTile(s: list[i]),
                     ),
@@ -149,7 +165,13 @@ class _SectorTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return InkWell(
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4.5),
+      child: Material(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(
@@ -157,7 +179,7 @@ class _SectorTile extends StatelessWidget {
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         child: Row(
           children: [
             Expanded(
@@ -198,6 +220,8 @@ class _SectorTile extends StatelessWidget {
               ],
             ),
           ],
+        ),
+      ),
         ),
       ),
     );
@@ -285,19 +309,20 @@ class _SectorDetailPageState extends State<SectorDetailPage> {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
           InfoCard(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   _points.isEmpty ? '--' : fmtPrice(_points.last.value),
                   style: TextStyle(
-                      fontSize: 30,
-                      fontWeight: FontWeight.w800,
+                      fontSize: 28,
+                      fontWeight: FontWeight.w600,
                       color: upDownColor(pct, context),
+                      letterSpacing: -0.6,
                       fontFeatures: const [FontFeature.tabularFigures()]),
                 ),
                 const SizedBox(height: 4),
@@ -322,7 +347,7 @@ class _SectorDetailPageState extends State<SectorDetailPage> {
                   children: [
                     Text('成分股（${_members.length}）',
                         style: const TextStyle(
-                            fontSize: 14, fontWeight: FontWeight.w700)),
+                            fontSize: 14, fontWeight: FontWeight.w600)),
                     const Spacer(),
                     Text(
                       _membersAsc ? '涨幅升序' : '涨幅降序',

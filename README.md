@@ -72,7 +72,7 @@ docker run -d -p 8080:80 fund-valuation
 
 - 六平台并行构建（Android / Windows / Linux / macOS / iOS / Web-Docker）
 - 产物自动上传到 GitHub Release
-- Docker 镜像自动推送 GHCR（`1.1.1` 与 `latest` 双标签）
+- Docker 镜像自动推送 GHCR（`2.1.1` 与 `latest` 双标签）
 - macOS 构建后用 `lipo` 校验 Universal 双架构
 
 ## 技术栈

@@ -129,7 +129,7 @@ class _FundDetailPageState extends State<FundDetailPage> {
         builder: (context, _) {
           final q2 = app.quoteOf(widget.code);
           return ListView(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
             children: [
               _HeaderCard(q: q2, f: f),
               const SizedBox(height: 12),
@@ -203,6 +203,12 @@ class _FundDetailPageState extends State<FundDetailPage> {
                 _MgrChangesCard(profile: _profile!),
                 const SizedBox(height: 12),
               ],
+              if (q2 != null && q2.holdings.isNotEmpty) ...[
+                _MarketShareCard(q: q2),
+                const SizedBox(height: 12),
+                _IndustryDistCard(q: q2),
+                const SizedBox(height: 12),
+              ],
               _HoldingsCard(
                 q: q2,
                 onRefresh: () => app.refreshFundHoldingsLive(widget.code),
@@ -238,9 +244,10 @@ class _HeaderCard extends StatelessWidget {
               Text(
                 pctText(pct),
                 style: TextStyle(
-                  fontSize: 34,
-                  fontWeight: FontWeight.w800,
+                  fontSize: 32,
+                  fontWeight: FontWeight.w600,
                   color: upDownColor(pct, context),
+                  letterSpacing: -0.8,
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
@@ -305,7 +312,7 @@ class _MyHoldingsCard extends StatelessWidget {
           Row(
             children: [
               const Text('我的持仓',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
               const Spacer(),
               if (f.holdingDays > 0)
                 Text('持有 ${f.holdingDays} 天',
@@ -416,7 +423,7 @@ class _MyHoldingsCard extends StatelessWidget {
             Text(value,
                 style: TextStyle(
                     fontSize: 13.5,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                     color: color,
                     fontFeatures: const [FontFeature.tabularFigures()])),
             const SizedBox(height: 2),
@@ -492,7 +499,7 @@ class _EstTrendCardState extends State<_EstTrendCard> {
           Row(
             children: [
               const Text('分时估值走势',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
@@ -571,7 +578,7 @@ class _NavTrendCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('历史净值走势${detail == null ? '' : '（${detail!.name}）'}',
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
           if (loading)
             const SizedBox(
@@ -612,7 +619,7 @@ class _InfoCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('基金信息',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
           const SizedBox(height: 10),
           Row(
             children: [
@@ -671,7 +678,7 @@ class _SylChip extends StatelessWidget {
           value == '--' ? '--' : '$value%',
           style: TextStyle(
               fontSize: 14,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w600,
               color: color,
               fontFeatures: const [FontFeature.tabularFigures()]),
         ),
@@ -770,7 +777,7 @@ class _HoldingsCardState extends State<_HoldingsCard> {
             children: [
               Text('前十大重仓股（合计 ${wSum.toStringAsFixed(2)}%）',
                   style:
-                      const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                      const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
               const Spacer(),
               IconButton(
                 visualDensity: VisualDensity.compact,
@@ -856,8 +863,8 @@ class _HoldingsCardState extends State<_HoldingsCard> {
                                   style: TextStyle(
                                       fontSize: 10.5,
                                       fontWeight: h.changeTag == '新进'
-                                          ? FontWeight.w900
-                                          : FontWeight.w700,
+                                          ? FontWeight.w600
+                                          : FontWeight.w500,
                                       color: _tagColor(h.changeTag, context)),
                                 ),
                               ),
@@ -892,7 +899,7 @@ class _HoldingsCardState extends State<_HoldingsCard> {
   static Widget _colLabel(String text, Color color,
       {double? fixed, bool alignEnd = true}) {
     final style = TextStyle(
-        fontSize: 11, fontWeight: FontWeight.w700, color: color);
+        fontSize: 11, fontWeight: FontWeight.w600, color: color);
     if (fixed != null) {
       return SizedBox(
           width: fixed.toDouble(),
@@ -904,6 +911,380 @@ class _HoldingsCardState extends State<_HoldingsCard> {
     }
     return SizedBox(width: 48, child: Text(text, textAlign: TextAlign.center, style: style));
   }
+}
+
+/// 市场占比卡：交易所占比 / 板块占比 一键切换的环形饼图。
+class _MarketShareCard extends StatefulWidget {
+  const _MarketShareCard({required this.q});
+
+  final FundQuote q;
+
+  @override
+  State<_MarketShareCard> createState() => _MarketShareCardState();
+}
+
+class _MarketShareCardState extends State<_MarketShareCard> {
+  int _mode = 0; // 0=交易所占比，1=板块占比
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final hs = widget.q.holdings;
+    final raw = _mode == 0
+        ? HoldingDist.byExchange(hs)
+        : HoldingDist.byBoard(hs);
+    final stockSum = raw.fold<double>(0, (a, b) => a + b.$2);
+    final date = widget.q.reportDate;
+    return InfoCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('市场占比',
+                  style:
+                      TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+              const Spacer(),
+              _DistModeSwitch(
+                  mode: _mode, onChanged: (m) => setState(() => _mode = m)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '按重仓股交易市场统计${date.isEmpty ? '' : ' · 报告期 $date'}',
+            style: TextStyle(fontSize: 11, color: scheme.outline),
+          ),
+          const SizedBox(height: 8),
+          _DonutPie(
+            key: ValueKey('market-$_mode'),
+            slices: HoldingDist.withRemainder(raw),
+            centerValue: stockSum,
+            centerLabel: '重仓合计',
+          ),
+          const SizedBox(height: 6),
+          Text('按前十大重仓股占净值比例统计，灰色为未披露持仓及非股票资产',
+              style: TextStyle(fontSize: 10.5, color: scheme.outline)),
+        ],
+      ),
+    );
+  }
+}
+
+/// 行业分布卡：重仓股所属行业聚合环形饼图。
+class _IndustryDistCard extends StatelessWidget {
+  const _IndustryDistCard({required this.q});
+
+  final FundQuote q;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final raw = HoldingDist.byIndustry(q.holdings);
+    if (raw.isEmpty) return const SizedBox.shrink();
+    final stockSum = raw.fold<double>(0, (a, b) => a + b.$2);
+    final date = q.reportDate;
+    return InfoCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('行业分布',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          Text(
+            '按重仓股所属申万一级行业聚合${date.isEmpty ? '' : ' · 报告期 $date'}',
+            style: TextStyle(fontSize: 11, color: scheme.outline),
+          ),
+          const SizedBox(height: 8),
+          _DonutPie(
+            slices: HoldingDist.withRemainder(raw),
+            centerValue: stockSum,
+            centerLabel: '重仓合计',
+          ),
+          const SizedBox(height: 6),
+          Text('按前十大重仓股所属行业聚合占净值比例，灰色为未披露持仓及非股票资产',
+              style: TextStyle(fontSize: 10.5, color: scheme.outline)),
+        ],
+      ),
+    );
+  }
+}
+
+/// 交易所 / 板块 切换小控件。
+class _DistModeSwitch extends StatelessWidget {
+  const _DistModeSwitch({required this.mode, required this.onChanged});
+
+  final int mode;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    Widget tab(int v, String text, IconData icon) {
+      final sel = mode == v;
+      return GestureDetector(
+        onTap: () => onChanged(v),
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: sel ? scheme.primary : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon,
+                  size: 13.5,
+                  color: sel ? scheme.onPrimary : scheme.outline),
+              const SizedBox(width: 3),
+              Text(text,
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: sel ? scheme.onPrimary : scheme.outline)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(2.5),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          tab(0, '交易所', Icons.account_balance_outlined),
+          tab(1, '板块', Icons.dashboard_customize_outlined),
+        ],
+      ),
+    );
+  }
+}
+
+/// 环形占比饼图（自绘）：中心显示汇总值，下方两列图例。
+class _DonutPie extends StatefulWidget {
+  const _DonutPie({
+    super.key,
+    required this.slices,
+    required this.centerValue,
+    required this.centerLabel,
+  });
+
+  /// (名称, 占比%)。
+  final List<(String, double)> slices;
+
+  /// 中心数值（重仓合计 %）。
+  final double centerValue;
+  final String centerLabel;
+
+  @override
+  State<_DonutPie> createState() => _DonutPieState();
+}
+
+class _DonutPieState extends State<_DonutPie>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 550),
+  )..forward();
+
+  /// 分类配色（灰色保留给「其他*」扇区）。
+  static const _palette = [
+    Color(0xFF3B82F6), // 蓝
+    Color(0xFF8B5CF6), // 紫
+    Color(0xFF10B981), // 翠绿
+    Color(0xFFF59E0B), // 琥珀
+    Color(0xFFEC4899), // 粉
+    Color(0xFF06B6D4), // 青
+    Color(0xFFF97316), // 橙
+    Color(0xFF6366F1), // 靛
+    Color(0xFF84CC16), // 青柠
+  ];
+  static const _greyKeys = {'其他未披露', '其他行业', '其他市场'};
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final grey = scheme.outline.withValues(alpha: 0.45);
+    final colors = <Color>[];
+    var ci = 0;
+    for (final s in widget.slices) {
+      if (_greyKeys.contains(s.$1)) {
+        colors.add(grey);
+      } else {
+        colors.add(_palette[ci % _palette.length]);
+        ci++;
+      }
+    }
+    return Column(
+      children: [
+        SizedBox(
+          width: 150,
+          height: 150,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              AnimatedBuilder(
+                animation: _c,
+                builder: (context, child) => CustomPaint(
+                  size: Size.infinite,
+                  painter: _DonutPainter(
+                    widget.slices,
+                    colors,
+                    Curves.easeOutCubic.transform(_c.value),
+                  ),
+                ),
+              ),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '${widget.centerValue.toStringAsFixed(2)}%',
+                    style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                        fontFeatures: [FontFeature.tabularFigures()]),
+                  ),
+                  Text(widget.centerLabel,
+                      style:
+                          TextStyle(fontSize: 10.5, color: scheme.outline)),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        _DonutLegend(slices: widget.slices, colors: colors),
+      ],
+    );
+  }
+}
+
+/// 饼图两列图例：色块 + 名称 + 百分比。
+class _DonutLegend extends StatelessWidget {
+  const _DonutLegend({required this.slices, required this.colors});
+
+  final List<(String, double)> slices;
+  final List<Color> colors;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget item(int i) {
+      final name = slices[i].$1;
+      final v = slices[i].$2;
+      return Row(
+        children: [
+          Container(
+            width: 9,
+            height: 9,
+            decoration: BoxDecoration(
+              color: colors[i],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12)),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            '${v.toStringAsFixed(2)}%',
+            style: const TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                fontFeatures: [FontFeature.tabularFigures()]),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      children: [
+        for (var i = 0; i < slices.length; i += 2)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 3.5),
+            child: Row(
+              children: [
+                Expanded(child: item(i)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: i + 1 < slices.length
+                      ? item(i + 1)
+                      : const SizedBox.shrink(),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// 环形饼图画笔：扇区间留细缝，随 [t]（0→1）展开。
+class _DonutPainter extends CustomPainter {
+  _DonutPainter(this.slices, this.colors, this.t);
+
+  final List<(String, double)> slices;
+  final List<Color> colors;
+  final double t;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const stroke = 24.0;
+    final rect = const Offset(stroke / 2, stroke / 2) &
+        Size(size.width - stroke, size.height - stroke);
+    final total = slices.fold<double>(0, (a, b) => a + b.$2);
+    if (total <= 0) return;
+    final gap = slices.length > 1 ? 0.04 : 0.0;
+    var start = -math.pi / 2;
+    for (var i = 0; i < slices.length; i++) {
+      final full = slices[i].$2 / total * 2 * math.pi;
+      final sweep = math.max(0.0, full - gap) * t;
+      final paint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke
+        ..strokeCap = StrokeCap.butt
+        ..color = colors[i];
+      canvas.drawArc(rect, start + gap / 2, sweep, false, paint);
+      start += full;
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DonutPainter old) =>
+      old.t != t ||
+      !_sameSlices(old.slices, slices) ||
+      !_sameColors(old.colors, colors);
+}
+
+bool _sameSlices(List<(String, double)> a, List<(String, double)> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i].$1 != b[i].$1 || a[i].$2 != b[i].$2) return false;
+  }
+  return true;
+}
+
+bool _sameColors(List<Color> a, List<Color> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i].toARGB32() != b[i].toARGB32()) return false;
+  }
+  return true;
 }
 
 /// 基金概况卡：费率 / 最低申购 / 规模变动 / 持有人结构 / 基本信息（f10）。
@@ -927,7 +1308,7 @@ class _ProfileCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('基金概况',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
           if (p != null && (p.fullName.isNotEmpty || p.company.isNotEmpty)) ...[
             const SizedBox(height: 6),
             if (p.fullName.isNotEmpty)
@@ -957,7 +1338,7 @@ class _ProfileCard extends StatelessWidget {
                             TextStyle(fontSize: 11, color: scheme.outline)),
                     Text(fee(detail.rate),
                         style: const TextStyle(
-                            fontSize: 13.5, fontWeight: FontWeight.w700)),
+                            fontSize: 13.5, fontWeight: FontWeight.w600)),
                   ],
                 ),
               ),
@@ -970,7 +1351,7 @@ class _ProfileCard extends StatelessWidget {
                             TextStyle(fontSize: 11, color: scheme.outline)),
                     Text(fee(detail.sourceRate),
                         style: const TextStyle(
-                            fontSize: 13.5, fontWeight: FontWeight.w700)),
+                            fontSize: 13.5, fontWeight: FontWeight.w600)),
                   ],
                 ),
               ),
@@ -985,7 +1366,7 @@ class _ProfileCard extends StatelessWidget {
                         ? '--'
                         : '${detail.minsg}元',
                         style: const TextStyle(
-                            fontSize: 13.5, fontWeight: FontWeight.w700)),
+                            fontSize: 13.5, fontWeight: FontWeight.w600)),
                   ],
                 ),
               ),
@@ -1000,7 +1381,7 @@ class _ProfileCard extends StatelessWidget {
                       Text('${latestScale.$2.toStringAsFixed(2)}亿',
                           style: const TextStyle(
                               fontSize: 13.5,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w600,
                               fontFeatures: [
                                 FontFeature.tabularFigures()
                               ])),
@@ -1091,7 +1472,7 @@ class _IndustriesCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('行业配置',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
           const SizedBox(height: 4),
           Text('按占净值比例降序（最近披露期）',
               style: TextStyle(fontSize: 11, color: scheme.outline)),
@@ -1161,7 +1542,7 @@ class _DailyScaleCard extends StatelessWidget {
               Text(
                 scale.isEtf ? '基金规模 · 每日' : '基金规模 · 每日估算',
                 style: const TextStyle(
-                    fontSize: 14, fontWeight: FontWeight.w700),
+                    fontSize: 14, fontWeight: FontWeight.w600),
               ),
               const Spacer(),
               Column(
@@ -1169,7 +1550,7 @@ class _DailyScaleCard extends StatelessWidget {
                 children: [
                   Text('${scale.latest.toStringAsFixed(2)} 亿',
                       style: const TextStyle(
-                          fontSize: 15, fontWeight: FontWeight.w800)),
+                          fontSize: 15, fontWeight: FontWeight.w600)),
                   if (!chg.isNaN)
                     Padding(
                       padding: const EdgeInsets.only(top: 1),
@@ -1183,7 +1564,7 @@ class _DailyScaleCard extends StatelessWidget {
                             '${chg >= 0 ? '+' : ''}${chg.toStringAsFixed(2)} 亿',
                             style: TextStyle(
                                 fontSize: 11.5,
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w600,
                                 color: upDownColor(chg, context)),
                           ),
                         ],
@@ -1290,13 +1671,13 @@ class _RatingCard extends StatelessWidget {
           Row(
             children: [
               const Text('基金评级 · 能力评分',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
               const Spacer(),
               if (detail.radarAvr != '--')
                 Text('综合 ${detail.radarAvr}分',
                     style: TextStyle(
                         fontSize: 13,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w600,
                         color: scheme.primary)),
             ],
           ),
@@ -1330,7 +1711,7 @@ class _RatingCard extends StatelessWidget {
                         textAlign: TextAlign.right,
                         style: TextStyle(
                             fontSize: 12,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w600,
                             color: e.$2 >= 60
                                 ? scheme.primary
                                 : scheme.onSurfaceVariant),
@@ -1369,7 +1750,7 @@ class _FeatureCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('特色数据',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
           const SizedBox(height: 4),
           Text('按近一年日净值计算 · 无风险利率 2%',
               style: TextStyle(fontSize: 11, color: scheme.outline)),
@@ -1384,7 +1765,7 @@ class _FeatureCard extends StatelessWidget {
                         style: TextStyle(fontSize: 11, color: scheme.outline)),
                     Text('${detail.volat.toStringAsFixed(2)}%',
                         style: const TextStyle(
-                            fontSize: 14, fontWeight: FontWeight.w700)),
+                            fontSize: 14, fontWeight: FontWeight.w600)),
                   ],
                 ),
               ),
@@ -1397,7 +1778,7 @@ class _FeatureCard extends StatelessWidget {
                     Text('-${detail.maxDrawdown.toStringAsFixed(2)}%',
                         style: TextStyle(
                             fontSize: 14,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w600,
                             color: upDownColor(-1, context))),
                   ],
                 ),
@@ -1413,7 +1794,7 @@ class _FeatureCard extends StatelessWidget {
                         : detail.sharpe.toStringAsFixed(2),
                         style: TextStyle(
                             fontSize: 14,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w600,
                             color: detail.sharpe.isNaN
                                 ? scheme.onSurface
                                 : detail.sharpe >= 1
@@ -1444,7 +1825,7 @@ class _AllocCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('资产配置趋势',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
           const SizedBox(height: 4),
           Text('股 / 债 / 现金占净比（季度披露）',
               style: TextStyle(fontSize: 11, color: scheme.outline)),
@@ -1534,7 +1915,7 @@ class _PositionsCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('持仓变动趋势',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
           const SizedBox(height: 4),
           Text('股票仓位占净值比（季度披露）',
               style: TextStyle(fontSize: 11, color: scheme.outline)),
@@ -1601,7 +1982,7 @@ class _BuybackCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('申赎与份额',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
           const SizedBox(height: 4),
           Text('期间申购/赎回（亿份）与期末总份额',
               style: TextStyle(fontSize: 11, color: scheme.outline)),
@@ -1661,7 +2042,7 @@ class _NavListCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('历史净值',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
           const SizedBox(height: 4),
           Text('最近 ${list.length} 个交易日',
               style: TextStyle(fontSize: 11, color: scheme.outline)),
@@ -1685,17 +2066,17 @@ class _NavListCard extends StatelessWidget {
                       padding: EdgeInsets.symmetric(vertical: 5),
                       child: Text('日期', textAlign: TextAlign.center,
                           style: TextStyle(
-                              fontSize: 11, fontWeight: FontWeight.w700))),
+                              fontSize: 11, fontWeight: FontWeight.w600))),
                   Padding(
                       padding: EdgeInsets.symmetric(vertical: 5),
                       child: Text('单位净值', textAlign: TextAlign.right,
                           style: TextStyle(
-                              fontSize: 11, fontWeight: FontWeight.w700))),
+                              fontSize: 11, fontWeight: FontWeight.w600))),
                   Padding(
                       padding: EdgeInsets.symmetric(vertical: 5),
                       child: Text('日涨幅', textAlign: TextAlign.right,
                           style: TextStyle(
-                              fontSize: 11, fontWeight: FontWeight.w700))),
+                              fontSize: 11, fontWeight: FontWeight.w600))),
                 ],
               ),
               ...list.asMap().entries.map((me) {
@@ -1764,7 +2145,7 @@ class _DividendsCard extends StatelessWidget {
           Row(
             children: [
               const Text('分红配送',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
               const Spacer(),
               Text('共 ${profile.dividends.length} 次（最近在前）',
                   style: TextStyle(fontSize: 11, color: scheme.outline)),
@@ -1780,7 +2161,7 @@ class _DividendsCard extends StatelessWidget {
                       child: Text(e.$1,
                           style: TextStyle(
                               fontSize: 11.5,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w600,
                               color: scheme.onSurfaceVariant)),
                     ),
                     const SizedBox(width: 6),
@@ -1796,7 +2177,7 @@ class _DividendsCard extends StatelessWidget {
                     Text(e.$4,
                         style: TextStyle(
                             fontSize: 12,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w600,
                             color: upDownColor(1, context))),
                   ],
                 ),
@@ -1821,7 +2202,7 @@ class _MgrChangesCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('重大变动 · 经理变更',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
           ...profile.mgrChanges.map((e) => Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
@@ -1842,7 +2223,7 @@ class _MgrChangesCard extends StatelessWidget {
                         Text(e.$5,
                             style: TextStyle(
                                 fontSize: 12,
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w600,
                                 fontFeatures: const [
                                   FontFeature.tabularFigures()
                                 ])),
@@ -1876,7 +2257,7 @@ class _BondsCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('重仓债券',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
           Wrap(
             spacing: 6,

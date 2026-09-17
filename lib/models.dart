@@ -131,6 +131,36 @@ class TradeRecord {
       );
 }
 
+/// 自选备份导入结果摘要。
+class ImportResult {
+  ImportResult({
+    required this.total,
+    required this.added,
+    required this.updated,
+    required this.trades,
+    required this.invalid,
+    required this.replaced,
+  });
+
+  /// 文件中有效基金条数。
+  final int total;
+
+  /// 新增基金数。
+  final int added;
+
+  /// 合并模式下被更新的已存在基金数。
+  final int updated;
+
+  /// 文件中的交易记录条数。
+  final int trades;
+
+  /// 无法解析被跳过的条数。
+  final int invalid;
+
+  /// 是否为覆盖导入。
+  final bool replaced;
+}
+
 /// 基金公司返回的最新净值信息。
 class FundNavInfo {
   FundNavInfo({

@@ -7,12 +7,15 @@ import '../services/fund_api.dart';
 import '../services/market_api.dart';
 import 'common.dart';
 import 'fund_detail_page.dart';
+import 'index_detail_page.dart';
 
-/// 基金排行页：场内 / 场外双榜。
+/// 基金排行页：场内基金 / 场外基金 / 指数排行 三榜。
 ///
 /// - 场内基金（ETF/LOF）：实时成交价涨跌幅排行（行情接口，非昨日净值口径）；
 /// - 场外基金：最新披露净值日增长率排行（全市场剔除场内代码），
-///   每次进入页面刷新缓存，支持涨幅/跌幅榜与主题关键词筛选（客户端过滤）。
+///   每次进入页面刷新缓存，支持涨幅/跌幅榜与主题关键词筛选（客户端过滤）；
+/// - 指数排行：A 股（宽基/风格/行业）与港股主流指数实时涨跌幅排行，
+///   清单见 [MarketApi.indexRankA]/[MarketApi.indexRankHK]。
 class RankPage extends StatefulWidget {
   const RankPage({super.key});
 
@@ -40,7 +43,7 @@ class _RankPageState extends State<RankPage> {
   /// 全市场涨跌分布统计缓存（避免重复拉取）。
   static FundRankStats? _statsCache;
 
-  int _tab = 0; // 0 场内 / 1 场外
+  int _tab = 0; // 0 场内 / 1 场外 / 2 指数
   bool _asc = false; // false 涨幅榜 / true 跌幅榜
   String _kw = ''; // 当前主题关键词（空=全部）
 
@@ -48,6 +51,14 @@ class _RankPageState extends State<RankPage> {
   final List<FundRankItem> _otcAll = [];
   final Set<int> _loadedTabs = {};
   List<FundRankItem> _items = [];
+
+  // —— 指数排行 ——
+  int _idxSub = 0; // 0 A股指数 / 1 港股指数
+  String _idxGroup = ''; // A股分组过滤：'' 全部 / 宽基 / 风格 / 行业
+  final List<IndexRankItem> _indexA = [];
+  final List<IndexRankItem> _indexHK = [];
+  final Set<int> _idxLoaded = {}; // 已加载的指数子榜
+  List<IndexRankItem> _indexItems = [];
   FundRankStats? _stats;
   bool _loading = false;
   bool _slow = false; // 加载超过 15s（弱网提示）。
@@ -64,6 +75,10 @@ class _RankPageState extends State<RankPage> {
   List<FundRankItem> get _source => _tab == 0 ? _intradayAll : _otcAll;
 
   Future<void> _loadTab() async {
+    if (_tab == 2) {
+      await _loadIndex();
+      return;
+    }
     if (_loading) return;
     _slow = false;
     // 弱网提示：15s 后仍未完成则显示慢速加载文案。
@@ -135,11 +150,85 @@ class _RankPageState extends State<RankPage> {
   void _switchTab(int tab) {
     if (_tab == tab) return;
     setState(() => _tab = tab);
-    if (_loadedTabs.contains(tab)) {
+    if (tab == 2) {
+      if (_idxLoaded.contains(_idxSub)) {
+        _applyIndexFilter();
+      } else {
+        _loadIndex();
+      }
+    } else if (_loadedTabs.contains(tab)) {
       _applyFilter();
     } else {
       _loadTab();
     }
+  }
+
+  /// 指数子榜切换（A股 / 港股）。
+  void _switchIndexSub(int sub) {
+    if (_idxSub == sub) return;
+    setState(() => _idxSub = sub);
+    if (_idxLoaded.contains(sub)) {
+      _applyIndexFilter();
+    } else {
+      _loadIndex();
+    }
+  }
+
+  /// 拉取当前指数子榜（已加载则直接跳过；[force] 用于手动刷新）。
+  Future<void> _loadIndex({bool force = false}) async {
+    if (_loading && !force) return;
+    final sub = _idxSub;
+    if (!force && _idxLoaded.contains(sub)) {
+      _applyIndexFilter();
+      return;
+    }
+    _slow = false;
+    unawaited(Future<void>.delayed(const Duration(seconds: 15), () {
+      if (mounted && _loading) setState(() => _slow = true);
+    }));
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      if (sub == 0 && (force || _indexA.isEmpty)) {
+        _indexA
+          ..clear()
+          ..addAll(await MarketApi.indexRank(MarketApi.indexRankA));
+        _idxLoaded.add(0);
+      } else if (sub == 1 && (force || _indexHK.isEmpty)) {
+        _indexHK
+          ..clear()
+          ..addAll(await MarketApi.indexRank(MarketApi.indexRankHK));
+        _idxLoaded.add(1);
+      }
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        final src = sub == 0 ? _indexA : _indexHK;
+        if (src.isEmpty) _error = '暂无指数数据';
+      });
+      _applyIndexFilter();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = '指数行情获取失败，请检查网络';
+      });
+    }
+  }
+
+  /// 指数榜：分组过滤 + 涨跌排序。
+  void _applyIndexFilter() {
+    final src = _idxSub == 0 ? _indexA : _indexHK;
+    final g = _idxGroup;
+    final filtered = (g.isEmpty || _idxSub == 1)
+        ? List<IndexRankItem>.of(src)
+        : [for (final e in src) if (e.group == g) e];
+    filtered.sort((a, b) =>
+        _asc ? a.pct.compareTo(b.pct) : b.pct.compareTo(a.pct));
+    if (!mounted) return;
+    setState(() => _indexItems = filtered);
   }
 
   /// 全市场涨跌分布统计。
@@ -159,29 +248,44 @@ class _RankPageState extends State<RankPage> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('基金排行'),
-        actions: [
-          IconButton(
-              icon: const Icon(Icons.refresh), tooltip: '刷新', onPressed: () {
-            _loadTab();
-            _loadStats();
-          }),
-        ],
-      ),
       body: Column(
         children: [
-          _StatsCard(
-            stats: _stats,
-            error: _statsError,
-            onRetry: _loadStats,
+          LargeTitleBar(
+            title: '基金排行',
+            actions: [
+              IconButton(
+                  icon: const Icon(Icons.refresh), tooltip: '刷新', onPressed: () {
+                if (_tab == 2) {
+                  _loadIndex(force: true);
+                } else {
+                  _loadTab();
+                  _loadStats();
+                }
+              }),
+            ],
           ),
-          // 场内 / 场外榜单切换。
+          // 全市场基金涨跌分布（仅基金榜展示；指数榜为指数口径，不展示）。
+          if (_tab != 2)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
+              child: _StatsCard(
+                stats: _stats,
+                error: _statsError,
+                onRetry: _loadStats,
+              ),
+            ),
+          // 场内 / 场外 / 指数 榜单切换（iOS 分段控件）。
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-            child: SizedBox(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Container(
               width: double.infinity,
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHigh,
+                borderRadius: BorderRadius.circular(10),
+              ),
               child: SegmentedButton<int>(
                 segments: const [
                   ButtonSegment(
@@ -194,26 +298,54 @@ class _RankPageState extends State<RankPage> {
                     icon: Icon(Icons.account_balance, size: 17),
                     label: Text('场外基金'),
                   ),
+                  ButtonSegment(
+                    value: 2,
+                    icon: Icon(Icons.show_chart, size: 17),
+                    label: Text('指数排行'),
+                  ),
                 ],
                 selected: {_tab},
                 showSelectedIcon: false,
-                style: ButtonStyle(
-                  visualDensity: VisualDensity.compact,
-                  textStyle: WidgetStatePropertyAll(TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Theme.of(context).colorScheme.onSurface)),
-                ),
                 onSelectionChanged: (sel) => _switchTab(sel.first),
               ),
             ),
           ),
+          // 指数榜：A股指数 / 港股指数 子切换。
+          if (_tab == 2)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerHigh,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: SegmentedButton<int>(
+                  segments: const [
+                    ButtonSegment(
+                      value: 0,
+                      icon: Icon(Icons.currency_exchange, size: 16),
+                      label: Text('A股指数'),
+                    ),
+                    ButtonSegment(
+                      value: 1,
+                      icon: Icon(Icons.location_city, size: 16),
+                      label: Text('港股指数'),
+                    ),
+                  ],
+                  selected: {_idxSub},
+                  showSelectedIcon: false,
+                  onSelectionChanged: (sel) => _switchIndexSub(sel.first),
+                ),
+              ),
+            ),
           // 涨跌榜切换 + 类型筛选：单行横滑，避免窄屏堆叠。
           SizedBox(
-            height: 44,
+            height: 46,
             child: ListView(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
               children: [
                 ChoiceChip(
                   label: const Text('涨幅榜'),
@@ -224,7 +356,7 @@ class _RankPageState extends State<RankPage> {
                   onSelected: (_) {
                     if (!_asc) return;
                     setState(() => _asc = false);
-                    _applyFilter();
+                    _tab == 2 ? _applyIndexFilter() : _applyFilter();
                   },
                 ),
                 const SizedBox(width: 8),
@@ -237,7 +369,7 @@ class _RankPageState extends State<RankPage> {
                   onSelected: (_) {
                     if (_asc) return;
                     setState(() => _asc = true);
-                    _applyFilter();
+                    _tab == 2 ? _applyIndexFilter() : _applyFilter();
                   },
                 ),
                 const Padding(
@@ -245,20 +377,39 @@ class _RankPageState extends State<RankPage> {
                   child: VerticalDivider(width: 1),
                 ),
                 const SizedBox(width: 4),
-                for (final (kw, label) in _themes)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(label, style: const TextStyle(fontSize: 12.5)),
-                      selected: _kw == kw,
-                      visualDensity: VisualDensity.compact,
-                      onSelected: (_) {
-                        if (_kw == kw) return;
-                        setState(() => _kw = kw);
-                        _applyFilter();
-                      },
+                if (_tab == 2) ...[
+                  // A股指数：宽基/风格/行业过滤；港股指数无分组。
+                  if (_idxSub == 0)
+                    for (final g in const ['', '宽基', '风格', '行业'])
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: ChoiceChip(
+                          label: Text(g.isEmpty ? '全部' : g,
+                              style: const TextStyle(fontSize: 12.5)),
+                          selected: _idxGroup == g,
+                          visualDensity: VisualDensity.compact,
+                          onSelected: (_) {
+                            if (_idxGroup == g) return;
+                            setState(() => _idxGroup = g);
+                            _applyIndexFilter();
+                          },
+                        ),
+                      ),
+                ] else
+                  for (final (kw, label) in _themes)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text(label, style: const TextStyle(fontSize: 12.5)),
+                        selected: _kw == kw,
+                        visualDensity: VisualDensity.compact,
+                        onSelected: (_) {
+                          if (_kw == kw) return;
+                          setState(() => _kw = kw);
+                          _applyFilter();
+                        },
+                      ),
                     ),
-                  ),
               ],
             ),
           ),
@@ -290,13 +441,27 @@ class _RankPageState extends State<RankPage> {
                         ],
                       )
                     : RefreshIndicator(
-                        onRefresh: _loadTab,
-                        child: ListView.builder(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          itemCount: _items.length,
-                          itemBuilder: (context, i) =>
-                              _RankTile(index: i, item: _items[i]),
-                        ),
+                        onRefresh: () async => _tab == 2
+                            ? _loadIndex(force: true)
+                            : _loadTab(),
+                        child: _tab == 2
+                            ? ListView.builder(
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                padding: const EdgeInsets.only(
+                                    top: 4, bottom: kFloatingNavPadding),
+                                itemCount: _indexItems.length,
+                                itemBuilder: (context, i) =>
+                                    _IndexRankTile(
+                                        index: i, item: _indexItems[i]),
+                              )
+                            : ListView.builder(
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                padding: const EdgeInsets.only(
+                                    top: 4, bottom: kFloatingNavPadding),
+                                itemCount: _items.length,
+                                itemBuilder: (context, i) =>
+                                    _RankTile(index: i, item: _items[i]),
+                              ),
                       ),
           ),
         ],
@@ -334,7 +499,7 @@ class _StatsCard extends StatelessWidget {
                 Row(
                   children: [
                     const Text('全市场涨跌分布',
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                     const SizedBox(width: 6),
                     Text('共 ${s.total} 只',
                         style: TextStyle(fontSize: 11, color: scheme.outline)),
@@ -397,7 +562,7 @@ class _Num extends StatelessWidget {
             Text('$value',
                 style: TextStyle(
                     fontSize: 16,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                     color: color,
                     fontFeatures: const [FontFeature.tabularFigures()])),
             Text(label,
@@ -427,13 +592,19 @@ class _RankTile extends StatelessWidget {
     };
     // 场内基金 navDate 为空：实时成交价口径；场外为净值日涨跌幅口径。
     final realtime = item.navDate.isEmpty;
-    return InkWell(
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4.5),
+      child: Material(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => FundDetailPage(code: item.code)),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         child: Row(
           children: [
             SizedBox(
@@ -443,7 +614,7 @@ class _RankTile extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 14,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                   color: rankColor,
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ),
@@ -475,6 +646,113 @@ class _RankTile extends StatelessWidget {
             const SizedBox(width: 10),
             PctText(item.pct, fontSize: 16),
           ],
+        ),
+      ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 指数排行条目：排名 + 名称/分组标签 + 点位 + 涨跌幅。
+class _IndexRankTile extends StatelessWidget {
+  const _IndexRankTile({required this.index, required this.item});
+
+  final int index;
+  final IndexRankItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final rank = index + 1;
+    final rankColor = switch (rank) {
+      1 => const Color(0xFFE5A400),
+      2 => const Color(0xFF9AA7B5),
+      3 => const Color(0xFFB87A50),
+      _ => scheme.outline,
+    };
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4.5),
+      child: Material(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => IndexDetailPage(
+            secid: item.secid,
+            name: item.name,
+            group: item.group,
+          ),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 30,
+              child: Text(
+                '$rank',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: rankColor,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(item.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.w600)),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: scheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(item.group,
+                            style: TextStyle(
+                                fontSize: 10,
+                                color: scheme.outline,
+                                fontWeight: FontWeight.w600)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${item.secid} · 实时点位 ${fmtPrice(item.price)}',
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        color: scheme.outline,
+                        fontFeatures:
+                            const [FontFeature.tabularFigures()]),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            PctText(item.pct, fontSize: 16),
+            Icon(Icons.chevron_right, size: 18, color: scheme.outlineVariant),
+          ],
+        ),
+      ),
         ),
       ),
     );

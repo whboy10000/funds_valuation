@@ -440,13 +440,13 @@ class _GlobeViewState extends State<GlobeView>
                 Text(name,
                     style: TextStyle(
                         fontSize: 12,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w600,
                         color: scheme.onSurface)),
                 const SizedBox(height: 2),
                 Text(q == null ? '--' : fmtPrice(q.price),
                     style: TextStyle(
                         fontSize: 12.5,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w600,
                         color: scheme.onSurfaceVariant,
                         fontFeatures: const [FontFeature.tabularFigures()])),
                 const SizedBox(height: 1),
@@ -697,7 +697,7 @@ class _GlobePainter extends CustomPainter {
             text: '${c.country} ',
             style: TextStyle(
                 fontSize: 10.5 * math.max(1, scale * 0.85),
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
                 color: labelColor.withValues(alpha: 0.55 + 0.45 * depth)),
             children: [
               if (!pct.isNaN)
@@ -705,7 +705,7 @@ class _GlobePainter extends CustomPainter {
                     text: pctText(pct),
                     style: TextStyle(
                         fontSize: 10.5 * math.max(1, scale * 0.85),
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w600,
                         color: color)),
             ]),
         textDirection: TextDirection.ltr,
