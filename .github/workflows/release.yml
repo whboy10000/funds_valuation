@@ -42,7 +42,7 @@ jobs:
           name: android
           path: dist
 
-  # Windows：x64 免安装压缩包。
+  # Windows：x64 安装包（Inno Setup 生成的 setup EXE）。
   windows:
     name: Windows x64
     runs-on: windows-latest
@@ -54,17 +54,19 @@ jobs:
           channel: stable
           cache: true
       - run: flutter build windows --release
-      - name: Zip
+      - name: Build installer EXE (Inno Setup)
         shell: pwsh
         run: |
-          Compress-Archive -Path 'build/windows/x64/runner/Release/*' `
-            -DestinationPath 'fund-valuation-windows-x64.zip'
+          $ver = (Select-String -Path pubspec.yaml -Pattern '^version:\s*(\d+\.\d+\.\d+)').Matches[0].Groups[1].Value
+          Write-Host "AppVersion=$ver"
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAPP_VERSION=$ver windows\packaging\setup.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:
           name: windows
-          path: fund-valuation-windows-x64.zip
+          path: windows/packaging/dist/*.exe
 
-  # Linux：x64 免安装压缩包（GTK3）。
+  # Linux：x64 DEB 安装包（GTK3）。
   linux:
     name: Linux x64
     runs-on: ubuntu-latest
@@ -79,13 +81,36 @@ jobs:
           channel: stable
           cache: true
       - run: flutter build linux --release
-      - name: Tar
+      - name: Build DEB
         run: |
-          tar czf fund-valuation-linux-x64.tar.gz -C build/linux/x64/release .
+          VER=$(grep -E '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)
+          echo "Version=$VER"
+          mkdir -p pkg/DEBIAN pkg/usr/local/fund_valuation pkg/usr/share/applications
+          cp -r build/linux/x64/release/bundle/* pkg/usr/local/fund_valuation/
+          cat > pkg/DEBIAN/control <<EOF
+          Package: fund-valuation
+          Version: $VER
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Depends: libgtk-3-0
+          Maintainer: whboy10000
+          Description: Fund real-time valuation app
+           Cross-platform fund valuation with realtime estimates and market data.
+          EOF
+          cat > pkg/usr/share/applications/fund-valuation.desktop <<EOF
+          [Desktop Entry]
+          Type=Application
+          Name=Fund Valuation
+          Exec=/usr/local/fund_valuation/funds_valuation
+          Terminal=false
+          Categories=Finance;
+          EOF
+          dpkg-deb --build --root-owner-group pkg fund-valuation-linux-x64.deb
       - uses: actions/upload-artifact@v4
         with:
           name: linux
-          path: fund-valuation-linux-x64.tar.gz
+          path: fund-valuation-linux-x64.deb
 
   # macOS：Universal 二进制（Intel x86_64 + Apple Silicon arm64 单包支持）。
   macos:
@@ -104,15 +129,15 @@ jobs:
           BIN=build/macos/Build/Products/Release/基金估值.app/Contents/MacOS/基金估值
           lipo -info "$BIN"
           lipo -info "$BIN" | grep -q 'x86_64 arm64\|arm64 x86_64' && echo 'Universal: OK'
-      - name: Zip (keep signature layout)
+      - name: Pack DMG
         run: |
-          ditto -c -k --keepParent \
-            'build/macos/Build/Products/Release/基金估值.app' \
-            fund-valuation-macos-universal.zip
+          hdiutil create -volname "Fund Valuation" \
+            -srcfolder 'build/macos/Build/Products/Release/基金估值.app' \
+            -ov -format UDZO fund-valuation-macos-universal.dmg
       - uses: actions/upload-artifact@v4
         with:
           name: macos
-          path: fund-valuation-macos-universal.zip
+          path: fund-valuation-macos-universal.dmg
 
   # iOS：未签名 ipa（iOS 15.0+），需自行签名后安装（Xcode/侧载工具）。
   ios:
