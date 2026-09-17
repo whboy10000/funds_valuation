@@ -1,6 +1,12 @@
 # 基金实时估值 Fund Valuation
 
+<p align="left">
+  <img src="ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-1024x1024@1x.png" width="96" alt="App Icon">
+</p>
+
 一款**全平台**基金实时估值应用，一套代码同时覆盖 **macOS / Windows / Linux / iOS / Android / Web** 六端。
+
+当前版本 **v2.1.1**，采用 iOS App Store 风格界面与中国红品牌图标（红涨喜庆）。
 
 官方盘中估值接口（fundgz / GSZ）已下线，本应用自研实时估值引擎：以前十大重仓股持仓权重结合实时行情自算估值，并支持「重仓股实时 + 板块拟合」混合模型，盘中随时掌握净值走向。
 
@@ -33,8 +39,14 @@
 - **板块行情**：行业 / 概念板块涨幅排行、正序倒序切换、成分股列表、主力净流入、领涨股
 - **全市场涨跌分布**：上涨 / 平盘 / 下跌家数与比例条
 
+### 界面与体验（v2.1.1）
+- **iOS App Store 风格主题**：分组灰底白卡、大标题导航栏、InsetGrouped 设置页、胶囊开关
+- **悬浮圆角底部导航**：导航栏悬浮于内容之上，页面可穿透滚动
+- 字重扁平化、大数字收紧字距，浅色 / 深色 / 跟随系统三套配色
+- **中国红品牌图标**：红色渐变底 + 白色上涨折线箭头（寓意红盘上涨），六端全部尺寸适配（含 Android maskable 与 favicon）
+
 ### 其他
-- 自动刷新间隔（5~60s / 关闭）、红涨绿跌切换、浅色 / 深色 / 跟随系统主题、数据导出
+- 自动刷新间隔（5~60s / 关闭）、红涨绿跌切换、数据导出
 - 自适应布局：宽屏左侧导航栏，窄屏底部导航；前台自动刷新，后台暂停
 
 ## 支持的平台
@@ -46,7 +58,7 @@
 | Windows | x64 | Windows 10 1809+ | `fund-valuation-windows-x64.msi` 安装包 |
 | macOS | Universal（Intel x86_64 + Apple Silicon arm64 单包） | macOS 10.15+ | `fund-valuation-macos-universal.dmg` |
 | Linux | x64 | 主流发行版（GTK3） | `fund-valuation-linux-x64.deb` |
-| Web | 任意现代浏览器 | — | 静态文件 `build/web/` 或 Docker 镜像 |
+| Web | 任意现代浏览器 | — | 静态站 `fund-valuation-web.tar.gz` 或 Docker 镜像 |
 
 所有安装包由 GitHub Actions 自动构建，前往 [Releases](https://github.com/whboy10000/funds_valuation/releases) 下载。
 
@@ -66,26 +78,33 @@ docker build -t fund-valuation .
 docker run -d -p 8080:80 fund-valuation
 ```
 
+Release 中的 `fund-valuation-web.tar.gz` 是纯静态文件，解压后交给任意 Web 服务器（Nginx / Caddy / OSS / GitHub Pages）托管即可：
+
+```bash
+mkdir -p /var/www/fund && tar -xzf fund-valuation-web.tar.gz -C /var/www/fund
+```
+
 ## CI/CD
 
 推送 `v*` 格式 tag 自动触发 [.github/workflows/release.yml](.github/workflows/release.yml)：
 
-- 六平台并行构建（Android / Windows / Linux / macOS / iOS / Web-Docker）
-- 产物自动上传到 GitHub Release
+- 六平台并行构建（Android APK / Windows MSI / Linux DEB / macOS DMG / iOS IPA / Web）
+- 六个安装包自动上传到 GitHub Release（Web 同时提供静态站 tar.gz）
 - Docker 镜像自动推送 GHCR（`2.1.1` 与 `latest` 双标签）
 - macOS 构建后用 `lipo` 校验 Universal 双架构
+- 全部 Action 基于 Node 24 运行时，无弃用告警；支持 Actions 页面手动触发（workflow_dispatch）
 
 ## 技术栈
 
 | 项 | 说明 |
 | --- | --- |
 | 开发语言 | Dart 3.13 |
-| 框架 | Flutter 3.47（Material 3） |
+| 框架 | Flutter 3.47，Material 3 基础上自研 iOS App Store 风格主题 |
 | 网络 | `http` + 自研东财接口封装（批量行情 / 分时 / 日K / 板块 / 基金档案，多主机回退与限频节流） |
 | 本地存储 | `shared_preferences`（自选、持仓、分组、设置） |
 | Web 兼容 | `web` 包（JSONP 方式绕过无 CORS 头的接口） |
 | 自绘组件 | 3D 地球（世界边界 JSON 资产 + Canvas 正交投影）、面积图、饼图、迷你分时线 |
-| 质量保障 | `flutter analyze` 0 问题 + 单元测试 |
+| 质量保障 | `flutter analyze` 0 问题 + 31 个单元测试全绿 |
 
 ## 本地开发
 
