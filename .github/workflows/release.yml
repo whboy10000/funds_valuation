@@ -1,0 +1,152 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  FLUTTER_VERSION: '3.47.3'
+
+jobs:
+  # Android：universal（armeabi-v7a + arm64-v8a + x86_64）+ 按架构拆分，
+  # minSdk 由 Flutter 决定（引擎支持的最低版本），尽可能覆盖老设备。
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter build apk --release
+      - run: flutter build apk --release --split-per-abi
+      - name: Collect APKs
+        run: |
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk dist/fund-valuation-android-universal.apk
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk dist/fund-valuation-android-arm32.apk
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/fund-valuation-android-arm64.apk
+          cp build/app/outputs/flutter-apk/app-x86_64-release.apk dist/fund-valuation-android-x86_64.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: dist
+
+  # Windows：x64 免安装压缩包。
+  windows:
+    name: Windows x64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter build windows --release
+      - name: Zip
+        shell: pwsh
+        run: |
+          Compress-Archive -Path 'build/windows/x64/runner/Release/*' `
+            -DestinationPath 'fund-valuation-windows-x64.zip'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: fund-valuation-windows-x64.zip
+
+  # Linux：x64 免安装压缩包（GTK3）。
+  linux:
+    name: Linux x64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgtk-3-dev
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter build linux --release
+      - name: Tar
+        run: |
+          tar czf fund-valuation-linux-x64.tar.gz -C build/linux/x64/release .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: fund-valuation-linux-x64.tar.gz
+
+  # macOS：Universal 二进制（Intel x86_64 + Apple Silicon arm64 单包支持）。
+  macos:
+    name: macOS Universal
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter build macos --release
+      - name: Verify universal binary
+        run: |
+          BIN=build/macos/Build/Products/Release/基金估值.app/Contents/MacOS/基金估值
+          lipo -info "$BIN"
+          lipo -info "$BIN" | grep -q 'x86_64 arm64\|arm64 x86_64' && echo 'Universal: OK'
+      - name: Zip (keep signature layout)
+        run: |
+          ditto -c -k --keepParent \
+            'build/macos/Build/Products/Release/基金估值.app' \
+            fund-valuation-macos-universal.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: fund-valuation-macos-universal.zip
+
+  # iOS：未签名 ipa（iOS 15.0+），需自行签名后安装（Xcode/侧载工具）。
+  ios:
+    name: iOS (unsigned)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter build ios --release --no-codesign
+      - name: Pack unsigned ipa
+        run: |
+          mkdir Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/
+          zip -qry fund-valuation-ios-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios
+          path: fund-valuation-ios-unsigned.ipa
+
+  release:
+    name: GitHub Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [android, windows, linux, macos, ios]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: dist/*
