@@ -218,7 +218,14 @@ jobs:
           path: dist
           merge-multiple: true
           # 下载六个平台产物，排除 buildx 等附加 artifact。
-          pattern: android|windows|linux|macos|ios|web
+          # 注意：pattern 是 glob（支持多行），不是正则，不能用 | 做或匹配。
+          pattern: |
+            android
+            windows
+            linux
+            macos
+            ios
+            web
       - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
