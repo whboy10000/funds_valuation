@@ -204,6 +204,7 @@ class FundQuote {
     this.stockPosition = 0,
     this.holdingsUpdated = 0,
     this.reportDate = '',
+    this.mainIndustry = '',
   });
 
   final String code;
@@ -233,6 +234,10 @@ class FundQuote {
 
   /// 重仓股披露报告期，如 2026-06-30（与股票仓位同一季报周期）。
   String reportDate;
+
+  /// 基金主行业（行业配置中占净值比最大的行业，覆盖长尾持仓；
+  /// 空 = 未知，估值时回退到重仓股行业聚合推断）。
+  String mainIndustry;
 
   /// 估值是否有效。
   bool get hasEst => !estPct.isNaN;

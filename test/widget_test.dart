@@ -56,6 +56,14 @@ void main() {
           closeTo(1.4, 1e-9));
       // 重仓权重超出仓位：剩余部分为 0。
       expect(Estimator.computeHybrid(hs, quotes, 40, 5.0), closeTo(1.4, 1e-9));
+      // V2 现金剥离：仓位 50（现金 50 不参与），重仓 40 → (40×2+10×4)/100 = 1.2。
+      final hs2 = [
+        FundHolding(code: '600519', name: '贵州茅台', weight: 40, market: '1', industry: '白酒'),
+      ];
+      final quotes2 = {
+        '1.600519': const Quote(price: 100, pct: 2, change: 2),
+      };
+      expect(Estimator.computeHybrid(hs2, quotes2, 50, 4.0), closeTo(1.2, 1e-9));
     });
 
     test('estNav 推算', () {

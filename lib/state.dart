@@ -131,10 +131,16 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// 基金关联行业板块：取重仓股行业按权重聚合后的第一大行业，无则返回 null。
+  /// 基金关联行业板块（用于 V2 剩余占比拟合与关联板块展示）：
+  /// 优先基金行业配置的主行业（覆盖长尾持仓），
+  /// 无行业配置时回退到重仓股行业按权重聚合的第一大行业。
   (String, double)? relatedSector(String code) {
     final q = fundQuotes[code];
     if (q == null) return null;
+    if (q.mainIndustry.trim().isNotEmpty) {
+      final pct = _matchSectorPct(q.mainIndustry.trim());
+      if (!pct.isNaN) return (q.mainIndustry.trim(), pct);
+    }
     final byIndustry = <String, double>{};
     for (final h in q.holdings) {
       final ind = h.industry.trim();
@@ -145,7 +151,19 @@ class AppState extends ChangeNotifier {
     final top = (byIndustry.entries.toList()
           ..sort((a, b) => b.value.compareTo(a.value)))
         .first;
-    return (top.key, sectorPcts[top.key] ?? double.nan);
+    return (top.key, _matchSectorPct(top.key));
+  }
+
+  /// 行业名 → 行业板块实时涨幅：精确匹配，未命中时按包含关系模糊匹配
+  /// （行业配置与东财板块命名略有差异，如「制造业」vs「中证制造」）。
+  double _matchSectorPct(String name) {
+    if (name.isEmpty) return double.nan;
+    final exact = sectorPcts[name];
+    if (exact != null) return exact;
+    for (final e in sectorPcts.entries) {
+      if (e.key.contains(name) || name.contains(e.key)) return e.value;
+    }
+    return double.nan;
   }
 
   // ================= 自选基金 =================
@@ -495,7 +513,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// 拉取基金详情（pingzhongdata），并回填股票仓位。
+  /// 拉取基金详情（pingzhongdata），回填股票仓位与主行业（V2 拟合用）。
   Future<FundDetail?> loadDetail(String code) async {
     try {
       final d = await FundApi.detail(code);
@@ -503,21 +521,35 @@ class AppState extends ChangeNotifier {
         final q = fundQuotes[code];
         if (q != null) {
           q.reportDate = d.reportDate;
-        }
-        if (q != null && d.positionRatio > 0) {
-          q.stockPosition = d.positionRatio;
-          // 仓位更新后重算一次估值。
-          try {
-            final secids = [
-              for (final h in q.holdings) '${h.market}.${h.code}'
-            ];
-            if (secids.isNotEmpty) {
-              final quotes = await MarketApi.quotes(secids);
-              final pct = _hybridEst(q, quotes);
-              q.estPct = pct ?? double.nan;
-              q.estNav = q.hasEst ? Estimator.estNav(q.nav, q.estPct) : q.nav;
+          var changed = false;
+          // 主行业：行业配置（覆盖长尾持仓）第一大行业。
+          if (d.industries.isNotEmpty) {
+            final top = (d.industries.toList()
+                  ..sort((a, b) => b.$2.compareTo(a.$2)))
+                .first;
+            if (top.$1.trim().isNotEmpty && q.mainIndustry != top.$1.trim()) {
+              q.mainIndustry = top.$1.trim();
+              changed = true;
             }
-          } catch (_) {}
+          }
+          if (d.positionRatio > 0 && q.stockPosition != d.positionRatio) {
+            q.stockPosition = d.positionRatio;
+            changed = true;
+          }
+          // 仓位或主行业更新后重算一次估值。
+          if (changed) {
+            try {
+              final secids = [
+                for (final h in q.holdings) '${h.market}.${h.code}'
+              ];
+              if (secids.isNotEmpty) {
+                final quotes = await MarketApi.quotes(secids);
+                final pct = _hybridEst(q, quotes);
+                q.estPct = pct ?? double.nan;
+                q.estNav = q.hasEst ? Estimator.estNav(q.nav, q.estPct) : q.nav;
+              }
+            } catch (_) {}
+          }
         }
         notifyListeners();
       }
