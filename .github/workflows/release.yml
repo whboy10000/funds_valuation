@@ -12,8 +12,8 @@ env:
   FLUTTER_VERSION: '3.47.3'
 
 jobs:
-  # Android：universal（armeabi-v7a + arm64-v8a + x86_64）+ 按架构拆分，
-  # minSdk 由 Flutter 决定（引擎支持的最低版本），尽可能覆盖老设备。
+  # Android：单 APK（fat 包，同时含 armeabi-v7a / arm64-v8a / x86_64，
+  # minSdk 由 Flutter 决定，尽可能覆盖老设备）。
   android:
     name: Android APK
     runs-on: ubuntu-latest
@@ -29,14 +29,10 @@ jobs:
           channel: stable
           cache: true
       - run: flutter build apk --release
-      - run: flutter build apk --release --split-per-abi
-      - name: Collect APKs
+      - name: Collect APK
         run: |
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk dist/fund-valuation-android-universal.apk
-          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk dist/fund-valuation-android-arm32.apk
-          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/fund-valuation-android-arm64.apk
-          cp build/app/outputs/flutter-apk/app-x86_64-release.apk dist/fund-valuation-android-x86_64.apk
+          cp build/app/outputs/flutter-apk/app-release.apk dist/fund-valuation-android.apk
       - uses: actions/upload-artifact@v4
         with:
           name: android
@@ -91,7 +87,7 @@ jobs:
           Package: fund-valuation
           Version: $VER
           Section: utils
-          Priority: optional
+          Priority: optional 
           Architecture: amd64
           Depends: libgtk-3-0
           Maintainer: whboy10000
